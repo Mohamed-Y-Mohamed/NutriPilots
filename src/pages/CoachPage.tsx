@@ -411,7 +411,7 @@ function EstimateCard({
   logged: boolean;
   onLogged: () => void;
 }) {
-  const { logFood, date } = useAppData();
+  const { logFood, date, refresh } = useAppData();
   const [values, setValues] = useState({
     calories: estimate.calories,
     protein: estimate.protein_g,
@@ -452,6 +452,8 @@ function EstimateCard({
           .join(" — ") || null,
       });
       onLogged();
+      // Today's totals were computed before this entry existed.
+      void refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not add that to your diary.");
     } finally {
@@ -533,13 +535,18 @@ function EstimateCard({
  * the diary — the AI never writes one on its own.
  */
 function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
-  const [open, setOpen] = useState<string | null>(null);
+  // Most replies name a single meal. Leaving that one collapsed hid the only
+  // way to save it behind a tap nobody knew to make, so it opens straight away.
+  const [open, setOpen] = useState<string | null>(
+    suggestions.length === 1 ? suggestions[0].name : null,
+  );
   const [logged, setLogged] = useState<string[]>([]);
 
   return (
     <div className="mt-3 border-t border-line pt-3">
-      <p className="mb-2 text-[11px] text-ink-muted">
-        Add to your diary — you can adjust the numbers first.
+      <p className="mb-2 text-[11px] font-medium text-ink-muted">
+        {suggestions.length === 1 ? "Add this to your diary" : "Add to your diary"} — check the
+        numbers first.
       </p>
 
       <div className="grid gap-2">
@@ -572,8 +579,16 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
                     C {Math.round(suggestion.carbs_g)} · F {Math.round(suggestion.fat_g)}
                   </span>
                 </span>
-                <span className="shrink-0 text-brand">
-                  {isOpen ? <X size={16} /> : <Plus size={16} />}
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-soft px-2 py-1 text-[11px] font-medium text-brand">
+                  {isOpen ? (
+                    <>
+                      <X size={13} /> Close
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={13} /> Add
+                    </>
+                  )}
                 </span>
               </button>
 

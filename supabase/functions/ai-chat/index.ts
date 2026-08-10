@@ -2,6 +2,7 @@ import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { AiError, callAi, parseJsonLoose } from "../_shared/ai.ts";
 import { chatSystemPrompt, PHOTO_SYSTEM_PROMPT } from "../_shared/prompts.ts";
 import { json, preflight } from "../_shared/cors.ts";
+import { FUNCTION_BUILD } from "../_shared/version.ts";
 import { requireUser, userClient } from "../_shared/supabase.ts";
 
 const HISTORY_LIMIT = 12;
@@ -125,6 +126,7 @@ async function handleChat(
     .select("id, role, created_at");
 
   return json({
+    build: FUNCTION_BUILD,
     reply,
     suggestions,
     provider: result.provider,
@@ -290,6 +292,7 @@ async function handlePhoto(
     .single();
 
   return json({
+    build: FUNCTION_BUILD,
     reply,
     provider: result.provider,
     model: result.model,

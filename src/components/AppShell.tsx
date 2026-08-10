@@ -9,7 +9,9 @@ import {
 import { useEffect, useRef, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Brand } from "./Logo";
+import { PullToRefresh } from "./PullToRefresh";
 import { cx } from "./ui";
+import { useAppData } from "../state/AppDataContext";
 
 /**
  * Four destinations, always at the bottom, at every screen size. Keeping the
@@ -25,6 +27,7 @@ const NAVIGATION = [
 
 export function AppShell() {
   const location = useLocation();
+  const { refresh } = useAppData();
   const mainRef = useRef<HTMLElement>(null);
 
   // Route changes scroll to the top and reset the reading position, the way a
@@ -60,7 +63,9 @@ export function AppShell() {
         tabIndex={-1}
         className="pt-header pb-tabbar outline-none"
       >
-        <Outlet />
+        <PullToRefresh onRefresh={refresh}>
+          <Outlet />
+        </PullToRefresh>
       </main>
 
       <nav

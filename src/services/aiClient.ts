@@ -1,7 +1,12 @@
 import { requireSupabase } from "../lib/supabase";
 import type { AiProvider, ChatMessage, MealEstimate, MealSuggestion } from "../types";
 
+/** Remembered so Settings can show which function build actually answered. */
+export let lastFunctionBuild: string | null = null;
+
 export interface AiChatResponse {
+  /** Version marker from the deployed Edge Function. */
+  build?: string;
   reply: string;
   provider: AiProvider;
   model: string;
@@ -70,7 +75,16 @@ export async function sendChatMessage(
   message: string,
   imagePath?: string,
 ): Promise<AiChatResponse> {
-  return invokeFunction<AiChatResponse>("ai-chat", { message, imagePath });
+  const response = await invokeFunction<AiChatResponse>("ai-chat", { message, imagePath });
+  if (response.build) {
+    lastFunctionBuild = response.build;
+    try {
+      localStorage.setItem("nutripilot.functionBuild", response.build);
+    } catch {
+      // Reporting the build is a convenience, never a requirement.
+    }
+  }
+  return response;
 }
 
 /** Uploads to the private bucket under the user's own folder. */

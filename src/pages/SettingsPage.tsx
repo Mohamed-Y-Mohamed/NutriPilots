@@ -53,6 +53,16 @@ export function SettingsPage() {
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
 
+  // Recorded the last time the coach answered, so a half-finished hand-deploy
+  // is visible here instead of showing up as mysteriously missing features.
+  const functionBuild = (() => {
+    try {
+      return localStorage.getItem("nutripilot.functionBuild");
+    } catch {
+      return null;
+    }
+  })();
+
   const run = async (action: Exclude<PendingAction, null>) => {
     if (!user) return;
     setBusy(true);
@@ -241,6 +251,12 @@ export function SettingsPage() {
           </Button>
         </Card>
       </div>
+
+      <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-faint">
+        App build {__BUILD_ID__}
+        <br />
+        Coach build {functionBuild ?? "unknown — send the coach a message"}
+      </p>
 
       {showDeleteAccount && (
         <DeleteAccountSheet onClose={() => setShowDeleteAccount(false)} />

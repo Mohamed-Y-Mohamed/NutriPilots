@@ -231,7 +231,7 @@ function BackLink({ to }: { to: string }) {
  * honest set of numbers, then writes them to the diary.
  */
 function LogRecipeCard({ recipe }: { recipe: Recipe }) {
-  const { logFood, date } = useAppData();
+  const { logFood, date, refresh } = useAppData();
   const [servings, setServings] = useState(1);
   const [meal, setMeal] = useState<MealName>("Dinner");
   const [overrides, setOverrides] = useState<Record<number, number>>({});
@@ -276,6 +276,7 @@ function LogRecipeCard({ recipe }: { recipe: Recipe }) {
         userRecipeId: recipe.owned ? recipe.id : null,
       });
       setAdded(true);
+      void refresh();
       window.setTimeout(() => setAdded(false), 2000);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not add this to your diary.");
