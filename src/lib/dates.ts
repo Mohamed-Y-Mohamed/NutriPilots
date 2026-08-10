@@ -13,7 +13,7 @@ export function addDays(dateKey: string, days: number): string {
   return localDateKey(date);
 }
 
-export function isToday(dateKey: string): boolean {
+function isToday(dateKey: string): boolean {
   return dateKey === localDateKey();
 }
 
@@ -28,10 +28,4 @@ export function formatDayLabel(dateKey: string): string {
     day: "numeric",
     month: "short",
   });
-}
-
-export function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }

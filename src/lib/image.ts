@@ -1,6 +1,6 @@
 const MAX_DIMENSION = 1280;
 const JPEG_QUALITY = 0.82;
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export interface PreparedImage {
   blob: Blob;

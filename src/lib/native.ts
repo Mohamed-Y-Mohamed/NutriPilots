@@ -56,7 +56,7 @@ export async function capturePhoto(source: "camera" | "gallery"): Promise<Captur
   return { blob, previewUrl: photo.dataUrl };
 }
 
-export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const response = await fetch(dataUrl);
   return response.blob();
 }

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { cx } from "./ui";
 
-export function LogoMark({ size = 28, className }: { size?: number; className?: string }) {
+function LogoMark({ size = 28, className }: { size?: number; className?: string }) {
   return (
     <img
       src="/logo-192.png"

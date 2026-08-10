@@ -37,18 +37,6 @@ export async function loadDiary(date: string): Promise<DiaryEntry[]> {
   return (data ?? []).map(toEntry);
 }
 
-export async function loadDiaryRange(from: string, to: string): Promise<DiaryEntry[]> {
-  const { data, error } = await requireSupabase()
-    .from("diary_entries")
-    .select(FIELDS)
-    .gte("date", from)
-    .lte("date", to)
-    .order("date", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(toEntry);
-}
-
 export async function addDiaryEntry(
   userId: string,
   draft: DiaryDraft,

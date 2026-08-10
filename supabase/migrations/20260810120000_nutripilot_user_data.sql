@@ -348,10 +348,13 @@ create or replace function public.recent_foods(limit_count integer default 40)
 returns table (
   name          text,
   source        text,
-  ingredient_id uuid,
-  recipe_id     uuid,
-  user_ingredient_id uuid,
-  user_recipe_id uuid,
+  -- Returned as text, not uuid: `diary_entries` predates this migration and its
+  -- id columns are not guaranteed to be uuid-typed. Casting keeps the function
+  -- working either way, and JSON renders both identically.
+  ingredient_id text,
+  recipe_id     text,
+  user_ingredient_id text,
+  user_recipe_id text,
   unit          text,
   amount        numeric,
   calories      numeric,
@@ -373,9 +376,18 @@ as $$
     t.last_logged, t.times_logged
   from (
     select distinct on (lower(d.name), d.source)
-      d.name, d.source, d.ingredient_id, d.recipe_id,
-      d.user_ingredient_id, d.user_recipe_id,
-      d.unit, d.amount, d.calories, d.protein, d.carbs, d.fat,
+      d.name::text                as name,
+      d.source::text              as source,
+      d.ingredient_id::text       as ingredient_id,
+      d.recipe_id::text           as recipe_id,
+      d.user_ingredient_id::text  as user_ingredient_id,
+      d.user_recipe_id::text      as user_recipe_id,
+      d.unit::text                as unit,
+      d.amount::numeric           as amount,
+      d.calories::numeric         as calories,
+      d.protein::numeric          as protein,
+      d.carbs::numeric            as carbs,
+      d.fat::numeric              as fat,
       max(d.created_at) over (partition by lower(d.name), d.source) as last_logged,
       count(*)          over (partition by lower(d.name), d.source) as times_logged
     from public.diary_entries d

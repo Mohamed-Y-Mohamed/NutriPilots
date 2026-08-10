@@ -39,19 +39,6 @@ export async function searchIngredients(query: string, limit = 30): Promise<Ingr
   ].slice(0, limit * 2);
 }
 
-export async function getIngredient(
-  id: string,
-  owned = false,
-): Promise<Ingredient | null> {
-  const client = requireSupabase();
-  const table = owned ? "user_ingredients" : "ingredients";
-  const fields = owned ? USER_INGREDIENT_FIELDS : INGREDIENT_FIELDS;
-
-  const { data, error } = await client.from(table).select(fields).eq("id", id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? ({ ...(data as unknown as Ingredient), owned }) : null;
-}
-
 export async function loadRecipes(): Promise<Recipe[]> {
   const client = requireSupabase();
 

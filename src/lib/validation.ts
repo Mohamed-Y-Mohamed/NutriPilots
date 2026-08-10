@@ -17,7 +17,7 @@ export interface PasswordRule {
   met: boolean;
 }
 
-export function passwordRules(password: string): PasswordRule[] {
+function passwordRules(password: string): PasswordRule[] {
   return [
     { id: "length", label: "At least 8 characters", met: password.length >= 8 },
     { id: "letter", label: "A letter", met: /[a-z]/i.test(password) },

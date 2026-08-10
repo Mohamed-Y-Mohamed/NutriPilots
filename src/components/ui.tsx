@@ -1,4 +1,4 @@
-import { ImageOff, LoaderCircle, X } from "lucide-react";
+import { ImageOff, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -124,33 +124,9 @@ export function Card({
   );
 }
 
-export function SectionTitle({ children, action }: PropsWithChildren<{ action?: ReactNode }>) {
-  return (
-    <div className="mb-3 mt-8 flex items-center justify-between gap-4">
-      <h2 className="text-lg font-semibold tracking-tight">{children}</h2>
-      {action}
-    </div>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* Feedback                                                                    */
 /* -------------------------------------------------------------------------- */
-
-export function Spinner({ label = "Loading", inline = false }: { label?: string; inline?: boolean }) {
-  return (
-    <div
-      role="status"
-      className={cx(
-        "flex items-center justify-center gap-2 text-sm text-ink-muted",
-        inline ? "py-3" : "min-h-44 py-10",
-      )}
-    >
-      <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />
-      <span>{label}</span>
-    </div>
-  );
-}
 
 const ALERT_TONES = {
   error: "border-danger/30 bg-danger-soft text-danger",
@@ -222,17 +198,6 @@ export function Badge({
       {children}
     </span>
   );
-}
-
-export function VerificationBadge({
-  verdict,
-}: {
-  verdict: "approved" | "needs_review" | "rejected" | undefined;
-}) {
-  if (verdict === "approved") return <Badge tone="ok">AI verified</Badge>;
-  if (verdict === "needs_review") return <Badge tone="warn">Check values</Badge>;
-  if (verdict === "rejected") return <Badge tone="warn">Rejected</Badge>;
-  return null;
 }
 
 /* -------------------------------------------------------------------------- */

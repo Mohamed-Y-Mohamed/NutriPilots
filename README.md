@@ -91,8 +91,8 @@ npm run dev
 
 ### Provisioning Supabase
 
-No access token? Follow **[DEPLOY.md](DEPLOY.md)** — pasteable SQL and self-contained function
-files for the Supabase dashboard. Otherwise:
+The schema, storage bucket, secrets and Edge Functions are already deployed to
+`yhgkrbnmhgspgckvvfhe`. What follows is for a fresh project or a redeploy.
 
 Creating tables, the storage bucket, function secrets, and deploying Edge Functions needs a
 **Supabase Personal Access Token** — the publishable key cannot do any of it.
@@ -119,6 +119,13 @@ npm run supabase:functions     # functions only
 
 The migration is idempotent and **never touches `public.ingredients` or `public.recipes`** —
 their columns, constraints, indexes and RLS state are left exactly as they are.
+
+**Deploying by hand instead.** Without a token, run `npm run bundle:functions`: it writes
+`supabase/manual/01-schema.sql`, `02-storage.sql` and self-contained copies of each Edge Function
+under `supabase/manual/functions/`, generated from the real source so they cannot drift. Paste the
+SQL into the Supabase SQL editor and each function into the dashboard's function editor (names
+must match exactly). `purge-meal-photos` needs JWT verification switched **off** — it runs on a
+schedule and is guarded by the `PURGE_SECRET` header instead.
 
 ### Verifying the live backend
 

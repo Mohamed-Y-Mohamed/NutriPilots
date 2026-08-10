@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button, Sheet } from "./ui";
 
-export const TERMS_VERSION = "2026-08-10";
+const TERMS_VERSION = "2026-08-10";
 
 /**
  * Plain-English terms. Short on purpose — terms nobody reads protect nobody,
