@@ -200,7 +200,7 @@ export interface MealEstimate {
   is_food: boolean;
 }
 
-export type AiProvider = "groq" | "gemini";
+export type AiProvider = "groq" | "openrouter";
 
 export interface ChatMessage {
   id: string;

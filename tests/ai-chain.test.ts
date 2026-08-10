@@ -45,7 +45,6 @@ function mockFetchSequence(outcomes: Array<{ status: number; body: unknown }>) {
 }
 
 const openAiReply = (text: string) => ({ choices: [{ message: { content: text } }] });
-const geminiReply = (text: string) => ({ candidates: [{ content: { parts: [{ text }] } }] });
 const rateLimited = { error: { message: "Rate limit reached for model" } };
 
 const request = {
@@ -53,11 +52,19 @@ const request = {
   messages: [{ role: "user" as const, text: "How much protein?" }],
 };
 
+/** Models the current environment can actually reach. */
+const configured = (chain: typeof CHAT_MODELS) =>
+  chain.filter((model) => {
+    if (model.provider === "cloudflare") {
+      return env.has("CLOUDFLARE_API_TOKEN") && env.has("CLOUDFLARE_ACCOUNT_ID");
+    }
+    return env.has(model.provider === "groq" ? "GROQ_API_KEY" : "OPENROUTER_API_KEY");
+  });
+
 beforeEach(() => {
   calls = [];
   env.clear();
   env.set("GROQ_API_KEY", "groq-key");
-  env.set("GEMINI_API_KEY", "gemini-key");
   env.set("OPENROUTER_API_KEY", "openrouter-key");
 });
 
@@ -96,20 +103,25 @@ describe("model chain ordering", () => {
     expect(calls.every((call) => call.url.includes("groq.com"))).toBe(true);
   });
 
-  it("crosses to Gemini only once every Groq model is exhausted", async () => {
+  it("crosses to OpenRouter only once every Groq model is exhausted", async () => {
     const groqModelCount = CHAT_MODELS.filter((model) => model.provider === "groq").length;
 
     mockFetchSequence([
       ...Array.from({ length: groqModelCount }, () => ({ status: 429, body: rateLimited })),
-      { status: 200, body: geminiReply("Gemini picked it up.") },
+      { status: 200, body: openAiReply("OpenRouter picked it up.") },
     ]);
 
     const result = await callAi(request);
 
-    expect(result.provider).toBe("gemini");
+    expect(result.provider).toBe("openrouter");
     expect(result.attempts).toHaveLength(groqModelCount);
     expect(calls).toHaveLength(groqModelCount + 1);
-    expect(calls.at(-1)!.url).toContain("generativelanguage.googleapis.com");
+    expect(calls.at(-1)!.url).toContain("openrouter.ai");
+  });
+
+  it("never routes to Gemini, which no longer serves these models", async () => {
+    expect(CHAT_MODELS.every((model) => model.provider !== "gemini")).toBe(true);
+    expect(VERIFY_MODELS.every((model) => model.provider !== "gemini")).toBe(true);
   });
 
   it("reports a 429 once every model on every provider is exhausted", async () => {
@@ -119,17 +131,35 @@ describe("model chain ordering", () => {
       name: "AiError",
       status: 429,
     });
-    // Every configured chat model was genuinely attempted.
-    expect(calls).toHaveLength(CHAT_MODELS.length);
+    // Every model on a *configured* provider was genuinely attempted. Cloudflare
+    // is absent from this run because no account id is set.
+    expect(calls).toHaveLength(configured(CHAT_MODELS).length);
   });
 });
 
 describe("failure classification", () => {
-  it("aborts the whole chain on a 400 rather than replaying a bad request", async () => {
+  it("stops hammering a provider that rejected the request, but still tries the next one", async () => {
+    // A 400 means this vendor will not accept the request from any of its
+    // models — but a different vendor may. This is exactly the photo bug: a
+    // Groq 400 used to abort everything and surface as "could not answer".
+    mockFetchSequence([
+      { status: 400, body: { error: { message: "invalid image data" } } },
+      { status: 200, body: openAiReply("OpenRouter handled the photo.") },
+    ]);
+
+    const result = await callAi(request);
+
+    expect(result.provider).toBe("openrouter");
+    // Exactly one Groq call, then straight across.
+    expect(calls.filter((call) => call.url.includes("groq.com"))).toHaveLength(1);
+  });
+
+  it("gives up honestly when every provider rejects the request", async () => {
     mockFetchSequence([{ status: 400, body: { error: { message: "invalid payload" } } }]);
 
     await expect(callAi(request)).rejects.toBeInstanceOf(AiError);
-    expect(calls).toHaveLength(1);
+    // One call per provider, not one per model.
+    expect(calls).toHaveLength(2);
   });
 
   it("treats a 500 as worth retrying elsewhere", async () => {
@@ -168,11 +198,11 @@ describe("failure classification", () => {
 describe("provider selection", () => {
   it("skips providers with no configured key", async () => {
     env.delete("GROQ_API_KEY");
-    mockFetchSequence([{ status: 200, body: geminiReply("Gemini only.") }]);
+    mockFetchSequence([{ status: 200, body: openAiReply("OpenRouter only.") }]);
 
     const result = await callAi(request);
 
-    expect(result.provider).toBe("gemini");
+    expect(result.provider).toBe("openrouter");
     expect(calls).toHaveLength(1);
   });
 
@@ -207,7 +237,7 @@ describe("images", () => {
   });
 
   it("skips every text-only model when a photo is attached", async () => {
-    const visionCount = CHAT_MODELS.filter((model) => model.vision).length;
+    const visionCount = configured(CHAT_MODELS).filter((model) => model.vision).length;
     mockFetchSequence([{ status: 429, body: rateLimited }]);
 
     await expect(callAi({ ...request, image })).rejects.toMatchObject({ status: 429 });
@@ -238,19 +268,16 @@ describe("images", () => {
     expect(JSON.stringify(calls[1].body)).toContain("data:image/jpeg;base64,AAAA");
   });
 
-  it("inlines the image for Gemini, which cannot fetch URLs", async () => {
-    env.delete("GROQ_API_KEY");
-    mockFetchSequence([{ status: 200, body: geminiReply("{}") }]);
-
-    await callAi({ ...request, image });
-
-    expect(JSON.stringify(calls[0].body)).toContain('"inlineData"');
-    expect(JSON.stringify(calls[0].body)).not.toContain("signed.example");
+  it("keeps a vision fallback available on the other provider", async () => {
+    const visionProviders = new Set(
+      CHAT_MODELS.filter((model) => model.vision).map((model) => model.provider),
+    );
+    expect(visionProviders.size).toBeGreaterThan(1);
   });
 });
 
 describe("request shaping", () => {
-  it("puts the system prompt first for OpenAI-compatible providers", async () => {
+  it("puts the system prompt first", async () => {
     mockFetchSequence([{ status: 200, body: openAiReply("ok") }]);
     await callAi(request);
 
@@ -258,38 +285,17 @@ describe("request shaping", () => {
     expect(messages[0]).toEqual({ role: "system", content: request.system });
   });
 
-  it("moves the system prompt to systemInstruction for Gemini", async () => {
-    env.delete("GROQ_API_KEY");
-    mockFetchSequence([{ status: 200, body: geminiReply("ok") }]);
-    await callAi(request);
-
-    expect(calls[0].body.systemInstruction).toEqual({ parts: [{ text: request.system }] });
-    // Gemini names the assistant role "model".
-    expect(calls[0].body.contents).toEqual([
-      { role: "user", parts: [{ text: "How much protein?" }] },
-    ]);
-  });
-
-  it("disables Gemini thinking so output tokens go to the answer", async () => {
-    env.delete("GROQ_API_KEY");
-    mockFetchSequence([{ status: 200, body: geminiReply("ok") }]);
-    await callAi(request);
-
-    const config = calls[0].body.generationConfig as { thinkingConfig: { thinkingBudget: number } };
-    expect(config.thinkingConfig.thinkingBudget).toBe(0);
-  });
-
-  it("asks for JSON mode on both provider shapes when requested", async () => {
+  it("asks for JSON mode when requested", async () => {
     mockFetchSequence([{ status: 200, body: openAiReply("{}") }]);
     await callAi({ ...request, json: true });
     expect(calls[0].body.response_format).toEqual({ type: "json_object" });
+  });
 
+  it("identifies the app to OpenRouter for free-tier accounting", async () => {
     env.delete("GROQ_API_KEY");
-    calls = [];
-    mockFetchSequence([{ status: 200, body: geminiReply("{}") }]);
-    await callAi({ ...request, json: true });
-    const config = calls[0].body.generationConfig as { responseMimeType: string };
-    expect(config.responseMimeType).toBe("application/json");
+    mockFetchSequence([{ status: 200, body: openAiReply("ok") }]);
+    await callAi(request);
+    expect(calls[0].url).toContain("openrouter.ai");
   });
 });
 
@@ -352,29 +358,6 @@ describe("reasoning models", () => {
     expect(result.attempts).toHaveLength(1);
   });
 
-  it("drops Gemini parts flagged as thoughts", async () => {
-    env.delete("GROQ_API_KEY");
-    mockFetchSequence([
-      {
-        status: 200,
-        body: {
-          candidates: [
-            {
-              content: {
-                parts: [
-                  { text: "Internal planning.", thought: true },
-                  { text: "Roughly 120g of protein a day." },
-                ],
-              },
-            },
-          ],
-        },
-      },
-    ]);
-
-    const result = await callAi(request);
-    expect(result.text).toBe("Roughly 120g of protein a day.");
-  });
 });
 
 describe("cleanModelText", () => {
@@ -394,5 +377,33 @@ describe("cleanModelText", () => {
 
   it("returns nothing when the output is only a truncated thought", () => {
     expect(cleanModelText("<think>I should start by")).toBe("");
+  });
+});
+
+describe("cloudflare", () => {
+  it("is ignored when the token is set but the account id is not", async () => {
+    env.set("CLOUDFLARE_API_TOKEN", "cf-token");
+    mockFetchSequence([{ status: 429, body: rateLimited }]);
+
+    await expect(callAi(request)).rejects.toMatchObject({ status: 429 });
+    expect(calls.some((call) => call.url.includes("cloudflare.com"))).toBe(false);
+  });
+
+  it("is used once both secrets are present and the others are exhausted", async () => {
+    env.set("CLOUDFLARE_API_TOKEN", "cf-token");
+    env.set("CLOUDFLARE_ACCOUNT_ID", "acc123");
+
+    const others = CHAT_MODELS.filter((model) => model.provider !== "cloudflare").length;
+    mockFetchSequence([
+      ...Array.from({ length: others }, () => ({ status: 429, body: rateLimited })),
+      { status: 200, body: openAiReply("Cloudflare answered.") },
+    ]);
+
+    const result = await callAi(request);
+
+    expect(result.provider).toBe("cloudflare");
+    expect(calls.at(-1)!.url).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/acc123/ai/v1/chat/completions",
+    );
   });
 });

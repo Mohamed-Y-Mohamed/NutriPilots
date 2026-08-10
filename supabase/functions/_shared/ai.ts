@@ -1,18 +1,24 @@
 /**
  * The single AI boundary for NutriPilot.
  *
- * Requests walk a chain of models. Within a provider the chain steps down
- * through that provider's models first, so a single model running out of free
- * quota costs a retry, not the whole provider. Only when every model on a
- * provider is exhausted does it move to the next vendor.
+ * Three providers, all reachable through an OpenAI-compatible endpoint:
  *
- *   chat        Groq  →  Gemini          (keeps the user's conversation alive)
- *   verify      OpenRouter → Groq        (kept off the chat quotas entirely)
+ *   chat / photos   Groq  →  OpenRouter free tier  →  Cloudflare Workers AI
+ *   verification    OpenRouter free tier  →  Cloudflare  →  Groq
+ *
+ * Verification runs on the opposite provider so adding a food never eats the
+ * quota the conversation depends on. Within a provider the chain steps down
+ * through that provider's models first, so one model running out of free quota
+ * costs a retry rather than the whole provider.
+ *
+ * Gemini was removed deliberately: `gemini-2.5-*` now returns 404 "no longer
+ * available to new users", and the 3.x models reject the thinking config the
+ * older ones required, so the whole fallback was silently dead.
  *
  * Nothing above this module knows which vendor answered.
  */
 
-export type ProviderName = "groq" | "gemini" | "openrouter";
+export type ProviderName = "groq" | "openrouter" | "cloudflare";
 
 export interface ModelSpec {
   provider: ProviderName;
@@ -33,9 +39,9 @@ export interface AiMessage {
 
 export interface AiImage {
   mimeType: string;
-  /** Base64 without the `data:` prefix. Required — Gemini cannot fetch URLs. */
+  /** Base64 without the `data:` prefix. */
   base64: string;
-  /** Signed URL, preferred by OpenAI-compatible providers. */
+  /** Signed URL, preferred so the bytes stay out of the request body. */
   url?: string;
 }
 
@@ -57,8 +63,14 @@ export interface AiResult {
 }
 
 /**
- * Chat: fastest and most capable first, then progressively cheaper models that
- * usually still have free quota left.
+ * Groq answers first — it is by far the fastest. `qwen3.6-27b` is in the list
+ * only because it is Groq's sole vision model; it is a reasoning model and
+ * needs the flags below to produce an answer rather than a monologue.
+ *
+ * The OpenRouter models below were each checked to return a usable reply.
+ * `google/gemma-4-31b-it:free` and `inclusionai/ling-3.0-tiny:free` are
+ * deliberately absent: the first errors on every call, the second returns an
+ * empty body.
  */
 export const CHAT_MODELS: ModelSpec[] = [
   { provider: "groq", model: "llama-3.3-70b-versatile", vision: false },
@@ -66,33 +78,56 @@ export const CHAT_MODELS: ModelSpec[] = [
   { provider: "groq", model: "qwen/qwen3.6-27b", vision: true, reasoning: true },
   { provider: "groq", model: "openai/gpt-oss-20b", vision: false },
   { provider: "groq", model: "llama-3.1-8b-instant", vision: false },
-  { provider: "gemini", model: "gemini-2.5-flash", vision: true },
-  { provider: "gemini", model: "gemini-2.5-flash-lite", vision: true },
-  { provider: "gemini", model: "gemini-3.6-flash", vision: true },
+  { provider: "openrouter", model: "openai/gpt-oss-20b:free", vision: false },
+  { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free", vision: false },
+  { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free", vision: false },
+  // Last-resort vision fallback. Slow and often unavailable, but a photo that
+  // Groq cannot take is better served by a slow answer than by no answer.
+  { provider: "openrouter", model: "nvidia/nemotron-nano-12b-v2-vl:free", vision: true },
+  { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", vision: false },
+  { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct", vision: false },
+  { provider: "cloudflare", model: "@cf/meta/llama-3.2-11b-vision-instruct", vision: true },
 ];
 
-/**
- * Verification runs on OpenRouter's free tier so that adding foods never eats
- * into the quota the chat depends on. Groq is only a last resort.
- */
+/** Verification is kept off the chat quota entirely. */
 export const VERIFY_MODELS: ModelSpec[] = [
   { provider: "openrouter", model: "openai/gpt-oss-20b:free", vision: false },
-  { provider: "openrouter", model: "google/gemma-4-31b-it:free", vision: true },
   { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free", vision: false },
-  { provider: "openrouter", model: "inclusionai/ling-3.0-tiny:free", vision: false },
+  { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free", vision: false },
+  { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct", vision: false },
   { provider: "groq", model: "llama-3.1-8b-instant", vision: false },
 ];
 
-const ENDPOINTS = {
-  groq: "https://api.groq.com/openai/v1/chat/completions",
-  openrouter: "https://openrouter.ai/api/v1/chat/completions",
-} as const;
-
 const KEY_NAMES: Record<ProviderName, string> = {
   groq: "GROQ_API_KEY",
-  gemini: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  cloudflare: "CLOUDFLARE_API_TOKEN",
 };
+
+/**
+ * Cloudflare's URL carries the account id, so endpoints are resolved rather
+ * than looked up. Its OpenAI-compatible route means one request shape serves
+ * all three providers.
+ */
+function endpointFor(provider: ProviderName): string {
+  switch (provider) {
+    case "groq":
+      return "https://api.groq.com/openai/v1/chat/completions";
+    case "openrouter":
+      return "https://openrouter.ai/api/v1/chat/completions";
+    case "cloudflare":
+      return `https://api.cloudflare.com/client/v4/accounts/${
+        Deno.env.get("CLOUDFLARE_ACCOUNT_ID")
+      }/ai/v1/chat/completions`;
+  }
+}
+
+/** Cloudflare needs an account id as well as a token; the others need only a key. */
+function isConfigured(provider: ProviderName): boolean {
+  if (!Deno.env.get(KEY_NAMES[provider])) return false;
+  if (provider === "cloudflare") return Boolean(Deno.env.get("CLOUDFLARE_ACCOUNT_ID"));
+  return true;
+}
 
 export class AiError extends Error {
   constructor(
@@ -107,8 +142,9 @@ export class AiError extends Error {
 
 /**
  * A model is exhausted (not broken) when it rate limits, runs out of credit,
- * is decommissioned, or falls over. Those are worth retrying elsewhere. A plain
- * 400 means the request itself is wrong, so trying again would only fail again.
+ * is decommissioned, or falls over. Those are worth retrying anywhere. A plain
+ * 400 means this provider rejected the request itself, so its sibling models
+ * will reject it identically — but a different vendor may well accept it.
  */
 function isRetryable(status: number, body: string): boolean {
   if (status === 429 || status === 402 || status === 408 || status === 404) return true;
@@ -125,7 +161,7 @@ export async function callAi(
   const needsVision = Boolean(request.image);
 
   const usable = chain.filter(
-    (spec) => (!needsVision || spec.vision) && Boolean(Deno.env.get(KEY_NAMES[spec.provider])),
+    (spec) => (!needsVision || spec.vision) && isConfigured(spec.provider),
   );
 
   if (usable.length === 0) {
@@ -139,32 +175,36 @@ export async function callAi(
   }
 
   const attempts: string[] = [];
+  const rejectedProviders = new Set<ProviderName>();
   let lastError: unknown;
 
   for (const spec of usable) {
+    // A provider that rejected the request outright will reject it again on
+    // every sibling model. Skip to the next vendor instead of hammering it.
+    if (rejectedProviders.has(spec.provider)) continue;
+
     const apiKey = Deno.env.get(KEY_NAMES[spec.provider])!;
     try {
-      const text = spec.provider === "gemini"
-        ? await callGemini(spec, request, apiKey)
-        : await callOpenAiCompatible(spec, request, apiKey);
-
+      const text = await callProvider(spec, request, apiKey);
       return { text, provider: spec.provider, model: spec.model, attempts };
     } catch (error) {
       lastError = error;
       const retryable = error instanceof AiError ? error.retryable : true;
+
       console.error(
         `[ai] ${spec.provider}/${spec.model} failed:`,
         error instanceof Error ? error.message.slice(0, 200) : "unknown",
         `retryable=${retryable}`,
       );
-      if (!retryable) throw error;
+
+      if (!retryable) rejectedProviders.add(spec.provider);
       attempts.push(`${spec.provider}/${spec.model}`);
     }
   }
 
-  // Every model was tried and every one was exhausted or unreachable. That is
-  // the only case the user ever hears about — individual model switches are
-  // silent by design. The last failure is carried through so the logs say why.
+  // Every model was tried and every one failed. That is the only case the user
+  // ever hears about — individual model switches are silent by design. The last
+  // failure is carried through so the logs say why.
   const cause = lastError instanceof Error ? lastError.message.slice(0, 200) : "unknown";
   throw new AiError(
     `All ${attempts.length} models exhausted (${attempts.join(", ")}); last: ${cause}`,
@@ -174,10 +214,8 @@ export async function callAi(
 }
 
 // ---------------------------------------------------------------------------
-// Groq and OpenRouter (both OpenAI-compatible)
-// ---------------------------------------------------------------------------
 
-async function callOpenAiCompatible(
+async function callProvider(
   spec: ModelSpec,
   request: AiRequest,
   apiKey: string,
@@ -186,20 +224,20 @@ async function callOpenAiCompatible(
   // provider cannot fetch it, retry once inline before giving up on this model.
   if (request.image?.url) {
     try {
-      return await openAiRequest(spec, request, apiKey, request.image.url);
+      return await chatCompletion(spec, request, apiKey, request.image.url);
     } catch (error) {
       if (!(error instanceof AiError) || error.status !== 400) throw error;
-      console.error(`[ai] ${spec.model} could not fetch the signed URL, retrying inline`);
+      console.error(`[ai] ${spec.model} could not use the signed URL, retrying inline`);
     }
   }
 
   const inline = request.image
     ? `data:${request.image.mimeType};base64,${request.image.base64}`
     : undefined;
-  return await openAiRequest(spec, request, apiKey, inline);
+  return await chatCompletion(spec, request, apiKey, inline);
 }
 
-async function openAiRequest(
+async function chatCompletion(
   spec: ModelSpec,
   request: AiRequest,
   apiKey: string,
@@ -233,7 +271,7 @@ async function openAiRequest(
     headers["X-Title"] = "NutriPilot";
   }
 
-  const response = await fetchWithTimeout(ENDPOINTS[spec.provider as "groq" | "openrouter"], {
+  const response = await fetchWithTimeout(endpointFor(spec.provider), {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -263,7 +301,7 @@ async function openAiRequest(
   // OpenRouter returns 200 with an error body when an upstream model fails.
   if (completion?.error) {
     const message = String(completion.error.message ?? "upstream error");
-    throw new AiError(`${spec.provider}: ${message}`, 502, isRetryable(502, message));
+    throw new AiError(`${spec.provider}: ${message}`, 502, true);
   }
 
   const raw = completion?.choices?.[0]?.message?.content;
@@ -291,87 +329,20 @@ export function cleanModelText(raw: string): string {
   let text = raw;
 
   // Complete blocks, in any of the tag spellings these models use.
-  text = text.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*?<\/\1>/gi, "");
+  text = text.replace(/<(think|thinking|reasoning|scratchpad|analysis)>[\s\S]*?<\/\1>/gi, "");
+
+  // A stray closer leaves the real answer after it.
+  const closer = text.search(/<\/(think|thinking|reasoning|scratchpad|analysis)>/i);
+  if (closer !== -1) {
+    text = text.slice(text.indexOf(">", closer) + 1);
+  }
 
   // An unclosed opener means the answer was truncated mid-thought: nothing
   // after it is usable.
-  text = text.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/i, "");
-
-  // A stray closer leaves the real answer after it.
-  const closer = text.lastIndexOf("</think>");
-  if (closer !== -1) text = text.slice(closer + "</think>".length);
+  text = text.replace(/<(think|thinking|reasoning|scratchpad|analysis)>[\s\S]*$/i, "");
 
   return text.trim();
 }
-
-// ---------------------------------------------------------------------------
-// Gemini
-// ---------------------------------------------------------------------------
-
-async function callGemini(
-  spec: ModelSpec,
-  request: AiRequest,
-  apiKey: string,
-): Promise<string> {
-  const contents = request.messages.map((message, index) => {
-    const isLast = index === request.messages.length - 1;
-    const parts: unknown[] = [{ text: message.text }];
-    if (isLast && message.role === "user" && request.image) {
-      parts.push({
-        inlineData: { mimeType: request.image.mimeType, data: request.image.base64 },
-      });
-    }
-    return { role: message.role === "assistant" ? "model" : "user", parts };
-  });
-
-  const response = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${spec.model}:generateContent`,
-    {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: { parts: [{ text: request.system }] },
-        generationConfig: {
-          temperature: request.temperature ?? 0.3,
-          maxOutputTokens: request.maxTokens ?? 900,
-          // Thinking burns output tokens we do not need for short answers.
-          thinkingConfig: { thinkingBudget: 0 },
-          ...(request.json ? { responseMimeType: "application/json" } : {}),
-        },
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new AiError(
-      `gemini ${response.status}: ${body.slice(0, 300)}`,
-      response.status,
-      isRetryable(response.status, body),
-    );
-  }
-
-  const completion = await response.json();
-  const parts = completion?.candidates?.[0]?.content?.parts;
-  const joined = Array.isArray(parts)
-    ? parts
-      // Gemini marks reasoning parts; they are not for the user.
-      .filter((part: { thought?: boolean }) => part?.thought !== true)
-      .map((part: { text?: string }) => part?.text ?? "")
-      .join("")
-    : "";
-
-  const text = cleanModelText(joined);
-
-  if (!text) {
-    const reason = completion?.candidates?.[0]?.finishReason ?? "unknown";
-    throw new AiError(`${spec.model} returned no text (${reason}).`, 502, true);
-  }
-  return text;
-}
-
-// ---------------------------------------------------------------------------
 
 async function fetchWithTimeout(
   url: string,

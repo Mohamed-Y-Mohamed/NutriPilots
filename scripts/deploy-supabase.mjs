@@ -66,8 +66,8 @@ async function runMigrations() {
 }
 
 async function pushSecrets() {
-  const required = ["GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"];
-  const optional = ["PURGE_SECRET"];
+  const required = ["GROQ_API_KEY", "OPENROUTER_API_KEY"];
+  const optional = ["PURGE_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"];
 
   const secrets = [];
   for (const name of [...required, ...optional]) {

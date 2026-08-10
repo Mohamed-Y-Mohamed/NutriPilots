@@ -55,15 +55,21 @@ first, so one model running out of free quota costs a retry rather than the whol
 
 | Purpose | Chain |
 | --- | --- |
-| Chat and photos | Groq `llama-3.3-70b` → `gpt-oss-120b` → `qwen3.6-27b` (vision) → `gpt-oss-20b` → `llama-3.1-8b` → Gemini `2.5-flash` → `2.5-flash-lite` → `3.6-flash` |
-| Food verification | OpenRouter free tier (`gpt-oss-20b` → `gemma-4-31b` → `nemotron-3-super` → `ling-3.0-tiny`) → Groq `llama-3.1-8b` |
+| Chat and photos | Groq `llama-3.3-70b` → `gpt-oss-120b` → `qwen3.6-27b` (vision) → `gpt-oss-20b` → `llama-3.1-8b` → OpenRouter `gpt-oss-20b` → `nemotron-3-super` → `nemotron-nano-9b` → `nemotron-nano-12b-vl` (vision) |
+| Food verification | OpenRouter free tier (`gpt-oss-20b` → `nemotron-3-super` → `nemotron-nano-9b`) → Groq `llama-3.1-8b` |
 
 Verification runs on a separate provider so adding a food never eats the quota the chat depends
 on. Switching is **invisible** — the user is only ever told anything when every model on every
 provider is exhausted, and then it says the daily limit is reached.
 
-Requests with an image skip text-only models automatically. A 400 aborts the chain rather than
-replaying a malformed request against every vendor.
+Requests with an image skip text-only models automatically. A 400 means that vendor rejected the
+request, so the rest of its models are skipped — but the next vendor is still tried, because a
+request one provider refuses another often accepts.
+
+Gemini was removed after testing: `gemini-2.5-*` returns 404 "no longer available to new users"
+and the 3.x models reject the thinking config the older ones needed, so the entire fallback was
+dead. `google/gemma-4-31b-it:free` and `inclusionai/ling-3.0-tiny:free` are also absent — the
+first errors on every call, the second returns an empty body.
 
 Reasoning models are a trap here: left alone, `qwen3.6-27b` spends its entire output budget on a
 `<think>` monologue and returns a truncated block instead of an answer. It is sent
@@ -104,7 +110,6 @@ Creating tables, the storage bucket, function secrets, and deploying Edge Functi
 SUPABASE_ACCESS_TOKEN=sbp_...
 SUPABASE_PROJECT_REF=yhgkrbnmhgspgckvvfhe
 GROQ_API_KEY=gsk_...
-GEMINI_API_KEY=...
 OPENROUTER_API_KEY=sk-or-v1-...
 PURGE_SECRET=any-long-random-string
 ```
