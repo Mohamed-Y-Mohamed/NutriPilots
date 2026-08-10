@@ -220,6 +220,22 @@ export interface FoodReview {
   confidence: "low" | "medium" | "high";
   reasons: string[];
   suggested: Record<string, number> | null;
+  /**
+   * Ties a verdict to the exact numbers it was made against, so a review from
+   * a photo scan can be reused on save instead of paying for a second AI call.
+   */
+  fingerprint?: string;
+}
+
+/** One AI call: read the food, fill in what the photo does not show, judge it. */
+export interface IngredientScan {
+  recognised: boolean;
+  draft: IngredientDraft & { category: string };
+  /** Fields the AI estimated from typical values rather than read from the photo. */
+  estimatedFields: string[];
+  readFrom: "label" | "food";
+  review: FoodReview;
+  error?: string;
 }
 
 export interface IngredientDraft {

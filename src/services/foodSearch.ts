@@ -97,3 +97,38 @@ function normaliseUserRecipe(row: Partial<Recipe>): Recipe {
 function escapeLike(value: string): string {
   return value.replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
+
+/**
+ * Looks for a food that already exists before the user adds their own copy.
+ * Matching is on the leading words rather than the whole string, so "cherry
+ * tomatoes" finds "Tomatoes, cherry, raw".
+ */
+export async function findExistingIngredients(name: string, limit = 4): Promise<Ingredient[]> {
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return [];
+
+  const words = trimmed.toLowerCase().split(/\s+/).filter((word) => word.length > 2);
+  if (words.length === 0) return [];
+
+  const { data, error } = await requireSupabase()
+    .from("ingredients")
+    .select(INGREDIENT_FIELDS)
+    .ilike("name", `%${escapeLike(words[0])}%`)
+    .limit(40);
+
+  if (error) return [];
+
+  const candidates = (data ?? []) as Ingredient[];
+
+  // Rank by how many of the typed words the reference name contains, so an
+  // exact-ish match beats a food that merely shares one word.
+  return candidates
+    .map((item) => {
+      const haystack = item.name.toLowerCase();
+      return { item, score: words.filter((word) => haystack.includes(word)).length };
+    })
+    .filter(({ score }) => score === words.length)
+    .sort((a, b) => a.item.name.length - b.item.name.length)
+    .slice(0, limit)
+    .map(({ item }) => item);
+}

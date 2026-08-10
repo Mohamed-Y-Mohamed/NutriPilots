@@ -532,6 +532,66 @@ Respond with JSON only:
 Use "approved" when the recipe is real and the numbers are close. Use "needs_review" when the
 recipe is real but the nutrition looks off — include "suggested" with better values. Use
 "rejected" only for entries that are not real recipes. Keep each reason under 15 words.`;
+
+/**
+ * One call that does three jobs at once: read the food from a photo, fill in
+ * whatever the photo does not show from typical values for that food, and
+ * judge whether the result is plausible. Splitting these would triple the
+ * number of requests against a free tier for no benefit.
+ */
+export const INGREDIENT_SCAN_PROMPT =
+  `You are a food-label reader and nutrition estimator for a diary app.
+
+The user has photographed either a packaged food's nutrition label, or the food itself.
+
+STEP 1 - IDENTIFY
+Work out what the food is. Read the brand and product name if they are visible.
+
+STEP 2 - READ WHAT IS THERE
+Take every nutrition value you can actually read from the image. Convert everything to a
+per-100g basis, or per-100ml for a drink. If the label is per-serving, convert it using the
+serving size shown.
+
+STEP 3 - FILL THE GAPS
+For any field the image does not show, estimate it from well-known typical values for that food,
+the way a reference database would. Give a single representative number, not a range. Never leave
+a macro empty - a diary entry with missing macros is useless. List every field you estimated
+rather than read in "estimated_fields".
+
+STEP 4 - CHECK YOURSELF
+Protein x4 plus carbs x4 plus fat x9 should land within about 20% of the calories. Correct your
+numbers if they do not. Protein, carbs and fat together must not exceed 100g per 100g of food.
+
+Respond with JSON only:
+{
+  "recognised": true,
+  "name": "short food name",
+  "brand": "brand or empty string",
+  "basis_unit": "g",
+  "calories_kcal": 0,
+  "protein_g": 0,
+  "carbohydrates_g": 0,
+  "fat_g": 0,
+  "saturated_fat_g": 0,
+  "sugars_g": 0,
+  "fibre_g": 0,
+  "salt_g": 0,
+  "sodium_mg": 0,
+  "category": "e.g. Vegetables, Dairy, Snacks",
+  "dietary_tags": ["vegan"],
+  "estimated_fields": ["protein_g"],
+  "read_from": "label",
+  "verdict": "approved",
+  "confidence": "high",
+  "reasons": ["short plain-English note about anything uncertain"]
+}
+
+"basis_unit" is "g" or "ml". "read_from" is "label" or "food". "verdict" is "approved",
+"needs_review" or "rejected". "confidence" is "low", "medium" or "high".
+
+Set "recognised" to false and "verdict" to "rejected" only when the photo contains no food and no
+nutrition label. Use "needs_review" when you had to estimate most of the values. Every number must
+be non-negative. Keep each reason under 15 words.`;
 /**
  * A client that acts as the calling user. Every query it runs is subject to
  * row level security, so a function can never read another user's rows by

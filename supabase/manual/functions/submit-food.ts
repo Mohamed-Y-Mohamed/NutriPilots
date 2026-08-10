@@ -10,6 +10,7 @@
 
 
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -531,6 +532,66 @@ Respond with JSON only:
 Use "approved" when the recipe is real and the numbers are close. Use "needs_review" when the
 recipe is real but the nutrition looks off — include "suggested" with better values. Use
 "rejected" only for entries that are not real recipes. Keep each reason under 15 words.`;
+
+/**
+ * One call that does three jobs at once: read the food from a photo, fill in
+ * whatever the photo does not show from typical values for that food, and
+ * judge whether the result is plausible. Splitting these would triple the
+ * number of requests against a free tier for no benefit.
+ */
+export const INGREDIENT_SCAN_PROMPT =
+  `You are a food-label reader and nutrition estimator for a diary app.
+
+The user has photographed either a packaged food's nutrition label, or the food itself.
+
+STEP 1 - IDENTIFY
+Work out what the food is. Read the brand and product name if they are visible.
+
+STEP 2 - READ WHAT IS THERE
+Take every nutrition value you can actually read from the image. Convert everything to a
+per-100g basis, or per-100ml for a drink. If the label is per-serving, convert it using the
+serving size shown.
+
+STEP 3 - FILL THE GAPS
+For any field the image does not show, estimate it from well-known typical values for that food,
+the way a reference database would. Give a single representative number, not a range. Never leave
+a macro empty - a diary entry with missing macros is useless. List every field you estimated
+rather than read in "estimated_fields".
+
+STEP 4 - CHECK YOURSELF
+Protein x4 plus carbs x4 plus fat x9 should land within about 20% of the calories. Correct your
+numbers if they do not. Protein, carbs and fat together must not exceed 100g per 100g of food.
+
+Respond with JSON only:
+{
+  "recognised": true,
+  "name": "short food name",
+  "brand": "brand or empty string",
+  "basis_unit": "g",
+  "calories_kcal": 0,
+  "protein_g": 0,
+  "carbohydrates_g": 0,
+  "fat_g": 0,
+  "saturated_fat_g": 0,
+  "sugars_g": 0,
+  "fibre_g": 0,
+  "salt_g": 0,
+  "sodium_mg": 0,
+  "category": "e.g. Vegetables, Dairy, Snacks",
+  "dietary_tags": ["vegan"],
+  "estimated_fields": ["protein_g"],
+  "read_from": "label",
+  "verdict": "approved",
+  "confidence": "high",
+  "reasons": ["short plain-English note about anything uncertain"]
+}
+
+"basis_unit" is "g" or "ml". "read_from" is "label" or "food". "verdict" is "approved",
+"needs_review" or "rejected". "confidence" is "low", "medium" or "high".
+
+Set "recognised" to false and "verdict" to "rejected" only when the photo contains no food and no
+nutrition label. Use "needs_review" when you had to estimate most of the values. Every number must
+be non-negative. Keep each reason under 15 words.`;
 /**
  * A client that acts as the calling user. Every query it runs is subject to
  * row level security, so a function can never read another user's rows by
@@ -585,6 +646,11 @@ export async function requireUser(
  */
 
 
+
+
+
+
+
 type Verdict = "approved" | "needs_review" | "rejected";
 
 interface Review {
@@ -621,11 +687,31 @@ Deno.serve(async (request) => {
   const authed = await requireUser(request);
   if (!authed) return json({ error: "Please sign in first." }, 401);
 
-  let body: { type?: unknown; payload?: unknown; acceptWarnings?: unknown };
+  let body: {
+    type?: unknown;
+    payload?: unknown;
+    acceptWarnings?: unknown;
+    mode?: unknown;
+    imagePath?: unknown;
+    review?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
     return json({ error: "Invalid request body." }, 400);
+  }
+
+  // Scanning reads the food, fills the gaps and judges plausibility in a single
+  // AI call, then hands the draft back for the user to check. Saving afterwards
+  // reuses that verdict rather than paying for a second call.
+  if (body.mode === "scan") {
+    if (typeof body.imagePath !== "string") {
+      return json({ error: "A photo is required to scan." }, 400);
+    }
+    if (!body.imagePath.startsWith(authed.user.id + "/")) {
+      return json({ error: "That photo does not belong to you." }, 403);
+    }
+    return await scanIngredient(authed.authorization, body.imagePath);
   }
 
   const type = body.type === "recipe" ? "recipe" : body.type === "ingredient" ? "ingredient" : null;
@@ -652,9 +738,13 @@ Deno.serve(async (request) => {
     : validateRecipe(record);
   if (shapeError) return json({ error: shapeError }, 422);
 
+  // A review carried back from a scan is reused: the AI has already judged
+  // exactly these numbers, so a second call would buy nothing.
+  const carried = carriedReview(body.review, record);
+
   let review: Review;
   try {
-    review = await reviewWithAi(type, record);
+    review = carried ?? (await reviewWithAi(type, record));
   } catch (error) {
     if (error instanceof AiError) {
       console.error("[submit-food] review unavailable", error.message);
@@ -695,6 +785,149 @@ Deno.serve(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
+
+async function scanIngredient(authorization: string, imagePath: string): Promise<Response> {
+  const client = userClient(authorization);
+
+  const download = await client.storage.from("meal-photos").download(imagePath);
+  if (download.error || !download.data) {
+    return json({ error: "That photo could not be read. Please retake it." }, 404);
+  }
+
+  const bytes = new Uint8Array(await download.data.arrayBuffer());
+  const mimeType = download.data.type || "image/jpeg";
+  const signed = await client.storage.from("meal-photos").createSignedUrl(imagePath, 300);
+
+  let result;
+  try {
+    result = await callAi({
+      system: INGREDIENT_SCAN_PROMPT,
+      messages: [{ role: "user", text: "Read this food and fill in its nutrition." }],
+      image: { mimeType, base64: encodeBase64(bytes), url: signed.data?.signedUrl },
+      json: true,
+      maxTokens: 900,
+      temperature: 0.2,
+    }, CHAT_MODELS);
+  } catch (error) {
+    // The photo is disposable either way; never leave it in the bucket.
+    await client.storage.from("meal-photos").remove([imagePath]);
+    if (error instanceof AiError) {
+      const exhausted = error.status === 429;
+      return json({
+        error: exhausted
+          ? "You have reached today's AI limit. Please enter the food by hand instead."
+          : "Could not read that photo. Try a clearer one, or enter the food by hand.",
+      }, exhausted ? 429 : 502);
+    }
+    throw error;
+  }
+
+  await client.storage.from("meal-photos").remove([imagePath]);
+
+  const parsed = parseJsonLoose<Record<string, unknown>>(result.text);
+  if (!parsed) {
+    return json({ error: "Could not read that photo. Please enter the food by hand." }, 502);
+  }
+
+  if (parsed.recognised === false) {
+    return json({
+      recognised: false,
+      error: "That photo does not look like a food or a nutrition label.",
+    }, 200);
+  }
+
+  const draft = {
+    name: scanText(parsed.name, ""),
+    brand: scanText(parsed.brand, ""),
+    basis_quantity: 100,
+    basis_unit: parsed.basis_unit === "ml" ? "ml" : "g",
+    calories_kcal: scanNumber(parsed.calories_kcal),
+    protein_g: scanNumber(parsed.protein_g),
+    carbohydrates_g: scanNumber(parsed.carbohydrates_g),
+    fat_g: scanNumber(parsed.fat_g),
+    saturated_fat_g: scanNumber(parsed.saturated_fat_g),
+    sugars_g: scanNumber(parsed.sugars_g),
+    fibre_g: scanNumber(parsed.fibre_g),
+    salt_g: scanNumber(parsed.salt_g),
+    sodium_mg: scanNumber(parsed.sodium_mg),
+    category: scanText(parsed.category, ""),
+    dietary_tags: Array.isArray(parsed.dietary_tags)
+      ? parsed.dietary_tags.filter((tag): tag is string => typeof tag === "string").slice(0, 11)
+      : [],
+  };
+
+  const verdict = parsed.verdict === "approved" || parsed.verdict === "rejected"
+    ? parsed.verdict
+    : "needs_review";
+
+  return json({
+    recognised: true,
+    draft,
+    estimatedFields: Array.isArray(parsed.estimated_fields)
+      ? parsed.estimated_fields.filter((f): f is string => typeof f === "string")
+      : [],
+    readFrom: parsed.read_from === "label" ? "label" : "food",
+    review: {
+      verdict,
+      confidence: parsed.confidence === "high" || parsed.confidence === "medium"
+        ? parsed.confidence
+        : "low",
+      reasons: Array.isArray(parsed.reasons)
+        ? parsed.reasons.filter((r): r is string => typeof r === "string").slice(0, 5)
+        : [],
+      suggested: null,
+      // Ties the verdict to the exact numbers it was made against.
+      fingerprint: fingerprint(draft),
+    },
+  }, 200);
+}
+
+/**
+ * A verdict handed back from a scan is honoured only while it still describes
+ * the numbers being saved. Edit a macro after scanning and it stops matching,
+ * so the food goes through a normal review instead.
+ */
+function carriedReview(value: unknown, record: Record<string, unknown>): Review | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+
+  if (typeof candidate.fingerprint !== "string") return null;
+  if (candidate.fingerprint !== fingerprint(record)) return null;
+
+  const verdict = candidate.verdict;
+  if (verdict !== "approved" && verdict !== "needs_review") return null;
+
+  return {
+    verdict,
+    confidence: candidate.confidence === "high" || candidate.confidence === "medium"
+      ? candidate.confidence
+      : "low",
+    reasons: Array.isArray(candidate.reasons)
+      ? candidate.reasons.filter((r): r is string => typeof r === "string")
+      : [],
+    suggested: null,
+  };
+}
+
+/** The values a review was actually made against. */
+function fingerprint(record: Record<string, unknown>): string {
+  return [
+    String(record.name ?? "").trim().toLowerCase(),
+    Number(record.calories_kcal ?? 0),
+    Number(record.protein_g ?? 0),
+    Number(record.carbohydrates_g ?? 0),
+    Number(record.fat_g ?? 0),
+  ].join("|");
+}
+
+function scanNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : 0;
+}
+
+function scanText(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 160) : fallback;
+}
 
 async function reviewWithAi(
   type: "ingredient" | "recipe",
