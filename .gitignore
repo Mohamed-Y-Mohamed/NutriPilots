@@ -1,0 +1,25 @@
+node_modules
+dist
+.env
+.env.local
+.env.deploy
+*.log
+.DS_Store
+
+# The Android project is committed so it can be opened in Android Studio and
+# uploaded to Play Console directly from a clone. iOS is not generated.
+ios/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/app/release/
+*.keystore
+*.jks
+
+# Playwright
+test-results/
+playwright-report/
+.playwright/

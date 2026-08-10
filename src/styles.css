@@ -1,0 +1,211 @@
+@import "tailwindcss";
+
+/* The app always stamps data-theme on <html>, so the dark variant keys off that
+   rather than the OS query. ThemeContext resolves "system" before stamping. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* Neutrals carry a faint olive tint so they sit under the brand rather than
+     fighting it. */
+  --color-canvas: #fafaf7;
+  --color-surface: #ffffff;
+  --color-muted: #f3f4ef;
+  --color-line: #e7e8e0;
+  --color-line-soft: #eff0ea;
+
+  --color-ink: #181c16;
+  --color-ink-muted: #6b7265;
+  --color-ink-faint: #9ba192;
+
+  /* Brand greens taken from the logo. */
+  --color-brand: #17966f;
+  --color-brand-strong: #0f7a59;
+  --color-brand-soft: #e6f4ee;
+  --color-lime: #c9e86b;
+  --color-lime-strong: #d6f086;
+  --color-olive: #333e24;
+  --color-olive-deep: #26301b;
+
+  --color-danger: #c0483f;
+  --color-danger-soft: #fdf0ef;
+  --color-warn: #8a6410;
+  --color-warn-soft: #fdf6e3;
+  --color-ok: #157a58;
+  --color-ok-soft: #e9f5f0;
+
+  --radius-card: 1rem;
+  --radius-sheet: 1.5rem;
+}
+
+[data-theme="dark"] {
+  --color-canvas: #0c0f0c;
+  --color-surface: #141813;
+  --color-muted: #1a1f19;
+  --color-line: #262c24;
+  --color-line-soft: #1f251e;
+
+  --color-ink: #ecefe9;
+  --color-ink-muted: #97a092;
+  --color-ink-faint: #6f7869;
+
+  --color-brand: #35c79a;
+  --color-brand-strong: #5cd7b1;
+  --color-brand-soft: #12291f;
+
+  --color-danger: #e5786e;
+  --color-danger-soft: #2a1613;
+  --color-warn: #e3c47c;
+  --color-warn-soft: #2a2413;
+  --color-ok: #5cd7b1;
+  --color-ok-soft: #102a21;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-olive);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--color-ink);
+    background-color: var(--color-canvas);
+    text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tailwind's reset drops these and the whole app relies on them. */
+  button,
+  [role="button"] {
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  input,
+  select,
+  textarea {
+    color: var(--color-ink);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-ink-faint);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  /* Spinners are noise on a form full of macros. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe areas — the difference between an app that looks native and one that
+     looks like a website in a WebView. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .h-header {
+    height: calc(3.5rem + env(safe-area-inset-top));
+  }
+  .h-tabbar {
+    height: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+  .pt-header {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+  }
+  .pb-tabbar {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+
+  .animate-fade-in {
+    animation: np-fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-rise {
+    animation: np-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-sheet {
+    animation: np-sheet 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-splash-slide {
+    animation: np-splash-slide 1.1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+}
+
+@keyframes np-splash-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+@keyframes np-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes np-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes np-sheet {
+  from {
+    opacity: 0.4;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

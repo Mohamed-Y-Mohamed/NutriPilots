@@ -1,0 +1,14 @@
+project_id = "yhgkrbnmhgspgckvvfhe"
+
+[functions.ai-chat]
+verify_jwt = true
+
+[functions.submit-food]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+# Runs on a schedule with no user session; guarded by the PURGE_SECRET header.
+[functions.purge-meal-photos]
+verify_jwt = false
