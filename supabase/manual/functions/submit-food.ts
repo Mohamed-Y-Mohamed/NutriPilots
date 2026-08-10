@@ -453,10 +453,32 @@ const STYLE = `STYLE:
 - Keep replies under 180 words unless the user asks for a full plan.
 - Use grams and kcal. No emoji.`;
 
+/**
+ * When the coach names specific meals it appends a machine-readable block, so
+ * the app can offer to log them. The block is stripped before display — the
+ * user only ever sees prose.
+ */
+const LOGGABLE = `LOGGING SUGGESTED MEALS:
+When your answer names one or more specific meals or foods with a calorie figure, append this
+block to the very end of your reply, after all prose:
+
+<<<LOG
+[{"name":"Chicken and chickpea traybake","calories":520,"protein_g":42,"carbs_g":30,"fat_g":22,"fibre_g":6,"servings":1}]
+LOG>>>
+
+Rules for the block:
+- Only include meals you actually named in the reply. Never invent extras.
+- One entry per meal, at most four.
+- Every number is per one serving of that meal, and must be non-negative.
+- Omit the block entirely when your reply names no specific meal.
+- Never mention the block, and never wrap it in code fences.`;
+
 export function chatSystemPrompt(context: string): string {
   return `${SCOPE}
 
 ${STYLE}
+
+${LOGGABLE}
 
 ${context}`;
 }
@@ -592,6 +614,58 @@ Respond with JSON only:
 Set "recognised" to false and "verdict" to "rejected" only when the photo contains no food and no
 nutrition label. Use "needs_review" when you had to estimate most of the values. Every number must
 be non-negative. Keep each reason under 15 words.`;
+
+/** The recipe equivalent of INGREDIENT_SCAN_PROMPT: read, fill, judge, one call. */
+export const RECIPE_SCAN_PROMPT =
+  `You are a recipe reader for a nutrition diary app.
+
+The user has photographed a recipe - a page from a book, a handwritten card, a screenshot, or a
+finished dish.
+
+STEP 1 - READ
+Pull out the recipe name, how many servings it makes, the ingredient list with quantities, and
+the method. If a photo shows only the finished dish, identify it and reconstruct the usual
+ingredients and method for that dish.
+
+STEP 2 - NUTRITION PER SERVING
+Work out calories, protein, carbohydrates, fat and fibre for ONE serving, from the ingredients
+and the serving count. Never leave one empty. List anything you estimated rather than read in
+"estimated_fields".
+
+STEP 3 - CHECK YOURSELF
+Protein x4 plus carbs x4 plus fat x9 should land within about 20% of the calories per serving.
+Correct your numbers if they do not.
+
+Respond with JSON only:
+{
+  "recognised": true,
+  "name": "recipe name",
+  "description": "one sentence about the dish",
+  "servings": 4,
+  "prep_time_minutes": 15,
+  "cook_time_minutes": 30,
+  "ingredients": ["400g chicken thighs", "1 tbsp olive oil"],
+  "instructions": "Step one. Step two.",
+  "cuisine": "Mediterranean",
+  "calories_per_serving": 0,
+  "protein_per_serving_g": 0,
+  "carbs_per_serving_g": 0,
+  "fat_per_serving_g": 0,
+  "fibre_per_serving_g": 0,
+  "dietary_tags": ["omnivore"],
+  "estimated_fields": ["fibre_per_serving_g"],
+  "verdict": "approved",
+  "confidence": "high",
+  "reasons": ["short note about anything uncertain"]
+}
+
+"dietary_tags" must contain exactly one of "omnivore", "vegetarian", "vegan" or "pescatarian",
+plus any of "dairy-free", "gluten-free", "high-protein", "weight-loss", "high-fibre", "low-carb",
+"low-fat" that apply. "verdict" is "approved", "needs_review" or "rejected". "confidence" is
+"low", "medium" or "high".
+
+Set "recognised" to false only when the photo shows no recipe and no identifiable dish. Every
+number must be non-negative. Keep each reason under 15 words.`;
 /**
  * A client that acts as the calling user. Every query it runs is subject to
  * row level security, so a function can never read another user's rows by
@@ -711,7 +785,11 @@ Deno.serve(async (request) => {
     if (!body.imagePath.startsWith(authed.user.id + "/")) {
       return json({ error: "That photo does not belong to you." }, 403);
     }
-    return await scanIngredient(authed.authorization, body.imagePath);
+    return await scanFood(
+      authed.authorization,
+      body.imagePath,
+      body.type === "recipe" ? "recipe" : "ingredient",
+    );
   }
 
   const type = body.type === "recipe" ? "recipe" : body.type === "ingredient" ? "ingredient" : null;
@@ -786,7 +864,11 @@ Deno.serve(async (request) => {
 
 // ---------------------------------------------------------------------------
 
-async function scanIngredient(authorization: string, imagePath: string): Promise<Response> {
+async function scanFood(
+  authorization: string,
+  imagePath: string,
+  kind: "ingredient" | "recipe",
+): Promise<Response> {
   const client = userClient(authorization);
 
   const download = await client.storage.from("meal-photos").download(imagePath);
@@ -801,8 +883,13 @@ async function scanIngredient(authorization: string, imagePath: string): Promise
   let result;
   try {
     result = await callAi({
-      system: INGREDIENT_SCAN_PROMPT,
-      messages: [{ role: "user", text: "Read this food and fill in its nutrition." }],
+      system: kind === "recipe" ? RECIPE_SCAN_PROMPT : INGREDIENT_SCAN_PROMPT,
+      messages: [{
+        role: "user",
+        text: kind === "recipe"
+          ? "Read this recipe and work out its nutrition per serving."
+          : "Read this food and fill in its nutrition.",
+      }],
       image: { mimeType, base64: encodeBase64(bytes), url: signed.data?.signedUrl },
       json: true,
       maxTokens: 900,
@@ -832,9 +919,13 @@ async function scanIngredient(authorization: string, imagePath: string): Promise
   if (parsed.recognised === false) {
     return json({
       recognised: false,
-      error: "That photo does not look like a food or a nutrition label.",
+      error: kind === "recipe"
+        ? "That photo does not look like a recipe or an identifiable dish."
+        : "That photo does not look like a food or a nutrition label.",
     }, 200);
   }
+
+  if (kind === "recipe") return recipeScanResponse(parsed);
 
   const draft = {
     name: scanText(parsed.name, ""),
@@ -882,6 +973,70 @@ async function scanIngredient(authorization: string, imagePath: string): Promise
   }, 200);
 }
 
+function recipeScanResponse(parsed: Record<string, unknown>): Response {
+  const ingredients = Array.isArray(parsed.ingredients)
+    ? parsed.ingredients
+      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+      .slice(0, 40)
+    : [];
+
+  const draft = {
+    name: scanText(parsed.name, ""),
+    description: scanText(parsed.description, ""),
+    servings: scanNumber(parsed.servings) || 1,
+    prep_time_minutes: scanNumber(parsed.prep_time_minutes),
+    cook_time_minutes: scanNumber(parsed.cook_time_minutes),
+    instructions: typeof parsed.instructions === "string"
+      ? parsed.instructions.trim().slice(0, 6000)
+      : "",
+    cuisine: scanText(parsed.cuisine, ""),
+    calories_per_serving: scanNumber(parsed.calories_per_serving),
+    protein_per_serving_g: scanNumber(parsed.protein_per_serving_g),
+    carbs_per_serving_g: scanNumber(parsed.carbs_per_serving_g),
+    fat_per_serving_g: scanNumber(parsed.fat_per_serving_g),
+    fibre_per_serving_g: scanNumber(parsed.fibre_per_serving_g),
+    ingredients,
+    dietary_tags: Array.isArray(parsed.dietary_tags)
+      ? parsed.dietary_tags.filter((tag): tag is string => typeof tag === "string").slice(0, 11)
+      : [],
+  };
+
+  const verdict = parsed.verdict === "approved" || parsed.verdict === "rejected"
+    ? parsed.verdict
+    : "needs_review";
+
+  return json({
+    recognised: true,
+    draft,
+    estimatedFields: Array.isArray(parsed.estimated_fields)
+      ? parsed.estimated_fields.filter((f): f is string => typeof f === "string")
+      : [],
+    readFrom: "food",
+    review: {
+      verdict,
+      confidence: parsed.confidence === "high" || parsed.confidence === "medium"
+        ? parsed.confidence
+        : "low",
+      reasons: Array.isArray(parsed.reasons)
+        ? parsed.reasons.filter((r): r is string => typeof r === "string").slice(0, 5)
+        : [],
+      suggested: null,
+      fingerprint: recipeFingerprint(draft),
+    },
+  }, 200);
+}
+
+/** Recipes are fingerprinted on their own per-serving fields. */
+function recipeFingerprint(record: Record<string, unknown>): string {
+  return [
+    String(record.name ?? "").trim().toLowerCase(),
+    Number(record.calories_per_serving ?? 0),
+    Number(record.protein_per_serving_g ?? 0),
+    Number(record.carbs_per_serving_g ?? 0),
+    Number(record.fat_per_serving_g ?? 0),
+  ].join("|");
+}
+
 /**
  * A verdict handed back from a scan is honoured only while it still describes
  * the numbers being saved. Edit a macro after scanning and it stops matching,
@@ -892,7 +1047,11 @@ function carriedReview(value: unknown, record: Record<string, unknown>): Review 
   const candidate = value as Record<string, unknown>;
 
   if (typeof candidate.fingerprint !== "string") return null;
-  if (candidate.fingerprint !== fingerprint(record)) return null;
+
+  const expected = "calories_per_serving" in record
+    ? recipeFingerprint(record)
+    : fingerprint(record);
+  if (candidate.fingerprint !== expected) return null;
 
   const verdict = candidate.verdict;
   if (verdict !== "approved" && verdict !== "needs_review") return null;

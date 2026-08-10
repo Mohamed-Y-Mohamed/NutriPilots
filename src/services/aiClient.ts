@@ -1,5 +1,5 @@
 import { requireSupabase } from "../lib/supabase";
-import type { AiProvider, ChatMessage, MealEstimate } from "../types";
+import type { AiProvider, ChatMessage, MealEstimate, MealSuggestion } from "../types";
 
 export interface AiChatResponse {
   reply: string;
@@ -8,6 +8,8 @@ export interface AiChatResponse {
   /** Models tried and exhausted before one answered. */
   attempts: string[];
   estimate?: MealEstimate | null;
+  /** Meals named in the reply, ready to be reviewed and logged. */
+  suggestions?: MealSuggestion[];
   analysisId?: string | null;
   messageId?: string | null;
 }

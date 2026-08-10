@@ -107,7 +107,7 @@ async function handleChat(
     temperature: 0.4,
   });
 
-  const reply = result.text.trim();
+  const { reply, suggestions } = splitSuggestions(result.text);
 
   const { data: inserted } = await client
     .from("chat_messages")
@@ -125,11 +125,54 @@ async function handleChat(
 
   return json({
     reply,
+    suggestions,
     provider: result.provider,
     model: result.model,
     attempts: result.attempts,
     messageIds: (inserted ?? []).map((row) => row.id),
   });
+}
+
+/**
+ * Pulls the machine-readable meal block off the end of a reply. The user sees
+ * prose; the app gets something it can write to the diary. A malformed block is
+ * dropped rather than shown, because a stray bracket in the chat would be worse
+ * than a missing button.
+ */
+export function splitSuggestions(raw: string): {
+  reply: string;
+  suggestions: Array<Record<string, unknown>>;
+} {
+  const match = raw.match(/<<<LOG([\s\S]*?)LOG>>>/);
+  if (!match) return { reply: raw.trim(), suggestions: [] };
+
+  const reply = raw.replace(match[0], "").trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[1].trim());
+  } catch {
+    return { reply, suggestions: [] };
+  }
+
+  if (!Array.isArray(parsed)) return { reply, suggestions: [] };
+
+  const suggestions = parsed
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .slice(0, 4)
+    .map((item) => ({
+      name: text(item.name, "Meal", 120),
+      calories: round(item.calories, 0),
+      protein_g: round(item.protein_g, 1),
+      carbs_g: round(item.carbs_g, 1),
+      fat_g: round(item.fat_g, 1),
+      fibre_g: round(item.fibre_g, 1),
+      servings: round(item.servings ?? 1, 2) || 1,
+    }))
+    // A "meal" with no energy at all is not worth offering.
+    .filter((item) => item.calories > 0);
+
+  return { reply, suggestions };
 }
 
 // ---------------------------------------------------------------------------

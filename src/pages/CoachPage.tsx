@@ -1,4 +1,4 @@
-import { Bot, Camera, Check, Images, Send, Sparkles, Trash2, X } from "lucide-react";
+import { Bot, Camera, Check, Images, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   Alert,
@@ -19,7 +19,13 @@ import {
 } from "../services/aiClient";
 import { useAppData } from "../state/AppDataContext";
 import { useAuth } from "../state/AuthContext";
-import { MEALS, type ChatMessage, type MealEstimate, type MealName } from "../types";
+import {
+  MEALS,
+  type ChatMessage,
+  type MealEstimate,
+  type MealName,
+  type MealSuggestion,
+} from "../types";
 
 const SUGGESTIONS = [
   "I have been the same weight for 3 weeks — what should I change?",
@@ -118,6 +124,7 @@ export function CoachPage() {
           role: "assistant",
           text: response.reply,
           estimate: response.estimate ?? null,
+          suggestions: response.suggestions ?? [],
           createdAt: new Date().toISOString(),
         },
       ]);
@@ -374,13 +381,17 @@ function MessageBubble({
             <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-brand align-middle" />
           )}
         </p>
-        {/* The estimate card waits until the sentence has finished arriving. */}
+        {/* Cards wait until the sentence has finished arriving. */}
         {message.estimate && !stillTyping && (
           <EstimateCard
             estimate={message.estimate}
             logged={Boolean(message.loggedAt)}
             onLogged={() => onLogged(message.id)}
           />
+        )}
+
+        {!stillTyping && (message.suggestions?.length ?? 0) > 0 && (
+          <SuggestionList suggestions={message.suggestions!} />
         )}
       </div>
     </div>
@@ -494,6 +505,86 @@ function EstimateCard({
       </p>
     </div>
   );
+}
+
+/**
+ * Meals the coach named in prose. Each opens the same editable card the photo
+ * estimate uses, so the user always corrects the numbers before they land in
+ * the diary — the AI never writes one on its own.
+ */
+function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const [logged, setLogged] = useState<string[]>([]);
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <p className="mb-2 text-[11px] text-ink-muted">
+        Add to your diary — you can adjust the numbers first.
+      </p>
+
+      <div className="grid gap-2">
+        {suggestions.map((suggestion) => {
+          const isLogged = logged.includes(suggestion.name);
+          const isOpen = open === suggestion.name;
+
+          if (isLogged) {
+            return (
+              <p
+                key={suggestion.name}
+                className="flex items-center gap-1.5 text-[12px] font-medium text-ok"
+              >
+                <Check size={14} /> {suggestion.name} added
+              </p>
+            );
+          }
+
+          return (
+            <div key={suggestion.name} className="rounded-xl border border-line bg-surface p-2.5">
+              <button
+                onClick={() => setOpen(isOpen ? null : suggestion.name)}
+                aria-expanded={isOpen}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium">{suggestion.name}</span>
+                  <span className="block text-[11px] tabular-nums text-ink-muted">
+                    {Math.round(suggestion.calories)} kcal · P {Math.round(suggestion.protein_g)} ·
+                    C {Math.round(suggestion.carbs_g)} · F {Math.round(suggestion.fat_g)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-brand">
+                  {isOpen ? <X size={16} /> : <Plus size={16} />}
+                </span>
+              </button>
+
+              {isOpen && (
+                <EstimateCard
+                  estimate={toEstimate(suggestion)}
+                  logged={false}
+                  onLogged={() => setLogged((current) => [...current, suggestion.name])}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function toEstimate(suggestion: MealSuggestion): MealEstimate {
+  return {
+    dish_name: suggestion.name,
+    description: "",
+    calories: suggestion.calories,
+    protein_g: suggestion.protein_g,
+    carbs_g: suggestion.carbs_g,
+    fat_g: suggestion.fat_g,
+    fibre_g: suggestion.fibre_g,
+    confidence: "medium",
+    summary: "",
+    is_food: true,
+  };
 }
 
 function MacroInput({

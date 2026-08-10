@@ -3,7 +3,7 @@
  * Provisions the NutriPilot Supabase project end to end:
  *   1. runs every migration in supabase/migrations (schema, RLS, storage bucket)
  *   2. uploads the AI keys as Edge Function secrets
- *   3. deploys the four Edge Functions
+ *   3. deploys the five Edge Functions
  *
  * Requires a Supabase Personal Access Token. The publishable key cannot do any
  * of this — it is a client-side read key.
@@ -27,7 +27,13 @@ const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 const REF = process.env.SUPABASE_PROJECT_REF ?? "yhgkrbnmhgspgckvvfhe";
 const API = "https://api.supabase.com/v1";
 
-const FUNCTIONS = ["ai-chat", "submit-food", "delete-account", "purge-meal-photos"];
+const FUNCTIONS = [
+  "ai-chat",
+  "submit-food",
+  "promote-food",
+  "delete-account",
+  "purge-meal-photos",
+];
 
 if (!TOKEN) {
   fail(

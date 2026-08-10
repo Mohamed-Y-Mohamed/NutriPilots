@@ -6,7 +6,11 @@ import { capturePhoto, isNative } from "../lib/native";
 import { macroCalorieMismatch } from "../lib/nutrition";
 import { uploadMealPhoto } from "../services/aiClient";
 import { findExistingIngredients } from "../services/foodSearch";
-import { scanIngredientPhoto, submitIngredient } from "../services/libraryRepository";
+import {
+  promoteToSharedDatabase,
+  scanIngredientPhoto,
+  submitIngredient,
+} from "../services/libraryRepository";
 import { useAuth } from "../state/AuthContext";
 import {
   DIET_TAGS,
@@ -34,9 +38,10 @@ const EMPTY = {
 type FormState = typeof EMPTY;
 
 /**
- * Adds a food to the signed-in user's own library. Nothing here ever writes to
- * the shared reference database — the row is owned by this user and visible
- * only to them, which is why a merely plausible food is still worth saving.
+ * Adds a food to the signed-in user's own library. The row is owned by them and
+ * visible only to them, which is why a merely plausible food is still worth
+ * saving. An AI-approved one is additionally offered to the shared reference
+ * database, so everyone benefits — see `promoteToSharedDatabase`.
  */
 export function AddIngredientSheet({
   onClose,
@@ -176,6 +181,10 @@ export function AddIngredientSheet({
       setReview(result.review);
 
       if (result.saved) {
+        // Offer it to the shared database too. Approved foods help everyone;
+        // anything less confident stays private. Never blocks the save.
+        const saved = result.item as { id?: string } | undefined;
+        if (saved?.id) void promoteToSharedDatabase("ingredient", saved.id);
         onSaved();
         return;
       }

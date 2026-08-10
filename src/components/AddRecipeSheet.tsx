@@ -1,9 +1,27 @@
-import { AlertTriangle, Check, Plus, Sparkles, X } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Camera, Check, Info, Plus, Sparkles, Wand2, X } from "lucide-react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { ReasonList } from "./AddIngredientSheet";
-import { Alert, Button, Chip, Field, IconButton, inputClass, labelClass, Sheet } from "./ui";
+import {
+  Alert,
+  Badge,
+  Button,
+  Chip,
+  Field,
+  IconButton,
+  inputClass,
+  labelClass,
+  Sheet,
+} from "./ui";
+import { prepareImage } from "../lib/image";
+import { capturePhoto, isNative } from "../lib/native";
+import { uploadMealPhoto } from "../services/aiClient";
+import { useAuth } from "../state/AuthContext";
 import { macroCalorieMismatch } from "../lib/nutrition";
-import { submitRecipe } from "../services/libraryRepository";
+import {
+  promoteToSharedDatabase,
+  scanRecipePhoto,
+  submitRecipe,
+} from "../services/libraryRepository";
 import type { FoodReview, RecipeDraft } from "../types";
 
 /** The reference `recipes` table requires exactly one of these, so user recipes match. */
@@ -47,12 +65,96 @@ export function AddRecipeSheet({
   const [baseDiet, setBaseDiet] = useState<(typeof BASE_DIETS)[number]>("omnivore");
   const [extraTags, setExtraTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<FoodReview | null>(null);
   const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [estimated, setEstimated] = useState<string[]>([]);
 
-  const set = (key: keyof FormState, value: string) =>
+  const { user } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const set = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+    // Any edit invalidates a verdict the AI gave for different numbers.
+    setReview(null);
+    setNeedsConfirm(false);
+  };
+
+  const scan = async (source: "camera" | "gallery") => {
+    if (!user) return;
+    if (!isNative && source === "camera") {
+      fileRef.current?.click();
+      return;
+    }
+    try {
+      const captured = await capturePhoto(source);
+      if (captured) await runScan(captured.blob);
+    } catch {
+      // The camera sheet was dismissed, which is not an error.
+    }
+  };
+
+  const scanFromFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const prepared = await prepareImage(file);
+      await runScan(prepared.blob);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not read that image.");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const runScan = async (blob: Blob) => {
+    if (!user || scanning) return;
+    setScanning(true);
+    setError(null);
+
+    try {
+      const path = await uploadMealPhoto(user.id, blob);
+      const result = await scanRecipePhoto(path);
+
+      if (!result.recognised) {
+        setError(result.error ?? "That photo does not look like a recipe.");
+        return;
+      }
+
+      const draft = result.draft;
+      setForm({
+        name: draft.name,
+        description: draft.description,
+        servings: String(draft.servings || 1),
+        prep_time_minutes: draft.prep_time_minutes ? String(draft.prep_time_minutes) : "",
+        cook_time_minutes: draft.cook_time_minutes ? String(draft.cook_time_minutes) : "",
+        instructions: draft.instructions,
+        calories_per_serving: String(draft.calories_per_serving),
+        protein_per_serving_g: String(draft.protein_per_serving_g),
+        carbs_per_serving_g: String(draft.carbs_per_serving_g),
+        fat_per_serving_g: String(draft.fat_per_serving_g),
+        fibre_per_serving_g: String(draft.fibre_per_serving_g),
+        cuisine: draft.cuisine,
+      });
+      if (draft.ingredients.length > 0) setIngredients(draft.ingredients);
+
+      const base = draft.dietary_tags.find((tag) =>
+        (BASE_DIETS as readonly string[]).includes(tag),
+      );
+      if (base) setBaseDiet(base as (typeof BASE_DIETS)[number]);
+      setExtraTags(draft.dietary_tags.filter((tag) => tag !== base));
+
+      setEstimated(result.estimatedFields ?? []);
+      // The scan already judged these exact numbers, so save reuses the verdict.
+      setReview(result.review);
+      setNeedsConfirm(result.review.verdict === "needs_review");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not read that photo.");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const filledIngredients = ingredients.map((line) => line.trim()).filter(Boolean);
   const missing = requiredMissing(form, filledIngredients);
@@ -80,10 +182,15 @@ export function AddRecipeSheet({
       const result = await submitRecipe(
         toDraft(form, filledIngredients, [baseDiet, ...extraTags]),
         acceptWarnings,
+        review,
       );
       setReview(result.review);
 
       if (result.saved) {
+        // Offer it to the shared database too. Approved foods help everyone;
+        // anything less confident stays private. Never blocks the save.
+        const saved = result.item as { id?: string } | undefined;
+        if (saved?.id) void promoteToSharedDatabase("recipe", saved.id);
         onSaved();
         return;
       }
@@ -98,7 +205,7 @@ export function AddRecipeSheet({
   return (
     <Sheet
       title="Add a recipe"
-      description="NutriPilot asks the AI whether this is a real recipe and whether the nutrition adds up before saving it."
+      description="Photograph the recipe or type it in. It is checked by AI and saved to your recipes — only you will see it."
       onClose={onClose}
       footer={
         <>
@@ -108,10 +215,14 @@ export function AddRecipeSheet({
               <ReasonList reasons={review.reasons} />
             </Alert>
           )}
-          {needsConfirm && review && (
+          {needsConfirm && review && review.verdict !== "rejected" && (
             <Alert tone="warn">
-              <p className="font-medium">The AI is not confident about this one.</p>
+              <p className="font-medium">The AI is not fully confident about this one.</p>
               <ReasonList reasons={review.reasons} />
+              <p className="mt-1.5">
+                You can still save it — it goes to your recipes only and will not affect anyone
+                else&rsquo;s search results.
+              </p>
             </Alert>
           )}
           {error && <Alert tone="error">{error}</Alert>}
@@ -121,13 +232,17 @@ export function AddRecipeSheet({
             size="lg"
             full
             onClick={() => void save(needsConfirm)}
-            disabled={busy || missing.length > 0}
+            disabled={busy || scanning || missing.length > 0}
           >
             {busy ? (
-              "Checking with AI…"
+              "Saving…"
             ) : needsConfirm ? (
               <>
-                <Check size={16} /> Save anyway
+                <Check size={16} /> Save to my recipes anyway
+              </>
+            ) : review ? (
+              <>
+                <Check size={16} /> Save to my recipes
               </>
             ) : (
               <>
@@ -145,6 +260,50 @@ export function AddRecipeSheet({
       }
     >
       <div className="grid gap-4">
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(event) => void scanFromFile(event)}
+          />
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              onClick={() => void scan("camera")}
+              disabled={scanning || busy}
+            >
+              <Camera size={16} /> {scanning ? "Reading recipe…" : "Scan a recipe or dish"}
+            </Button>
+            {isNative && (
+              <Button onClick={() => void scan("gallery")} disabled={scanning || busy}>
+                <Wand2 size={16} />
+              </Button>
+            )}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+            Photograph a recipe page, a handwritten card, or the finished dish. One photo fills in
+            the ingredients, method and per-serving nutrition.
+          </p>
+        </div>
+
+        {estimated.length > 0 && (
+          <Alert tone="info">
+            <span className="inline-flex items-start gap-2">
+              <Info size={14} className="mt-0.5 shrink-0" />
+              <span>
+                Estimated rather than read from the photo:{" "}
+                <span className="font-medium">
+                  {estimated.map((field) => field.replace(/_per_serving_g$|_g$/, "")).join(", ")}
+                </span>
+                . Worth a quick check.
+              </span>
+            </span>
+          </Alert>
+        )}
+
         <Field label="Recipe name">
           <input
             className={inputClass}
@@ -259,11 +418,11 @@ export function AddRecipeSheet({
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <NumberField label="Calories (kcal) *" value={form.calories_per_serving} onChange={(v) => set("calories_per_serving", v)} />
-          <NumberField label="Protein (g) *" value={form.protein_per_serving_g} onChange={(v) => set("protein_per_serving_g", v)} />
-          <NumberField label="Carbohydrates (g) *" value={form.carbs_per_serving_g} onChange={(v) => set("carbs_per_serving_g", v)} />
-          <NumberField label="Fat (g) *" value={form.fat_per_serving_g} onChange={(v) => set("fat_per_serving_g", v)} />
-          <NumberField label="Fibre (g)" value={form.fibre_per_serving_g} onChange={(v) => set("fibre_per_serving_g", v)} />
+          <NumberField label="Calories (kcal) *" estimated={estimated.includes("calories_per_serving")} value={form.calories_per_serving} onChange={(v) => set("calories_per_serving", v)} />
+          <NumberField label="Protein (g) *" estimated={estimated.includes("protein_per_serving_g")} value={form.protein_per_serving_g} onChange={(v) => set("protein_per_serving_g", v)} />
+          <NumberField label="Carbohydrates (g) *" estimated={estimated.includes("carbs_per_serving_g")} value={form.carbs_per_serving_g} onChange={(v) => set("carbs_per_serving_g", v)} />
+          <NumberField label="Fat (g) *" estimated={estimated.includes("fat_per_serving_g")} value={form.fat_per_serving_g} onChange={(v) => set("fat_per_serving_g", v)} />
+          <NumberField label="Fibre (g)" estimated={estimated.includes("fibre_per_serving_g")} value={form.fibre_per_serving_g} onChange={(v) => set("fibre_per_serving_g", v)} />
         </div>
 
         {showMismatch && (
@@ -318,24 +477,31 @@ function NumberField({
   label,
   value,
   onChange,
+  estimated,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  estimated?: boolean;
 }) {
   return (
-    <Field label={label}>
+    <div className="grid gap-1.5">
+      <span className="flex items-center gap-1.5">
+        <span className={labelClass}>{label}</span>
+        {estimated && <Badge tone="warn">Est.</Badge>}
+      </span>
       <input
         type="number"
         min="0"
         step="0.1"
         inputMode="decimal"
+        aria-label={label}
         className={inputClass}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="0"
       />
-    </Field>
+    </div>
   );
 }
 

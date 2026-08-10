@@ -453,10 +453,32 @@ const STYLE = `STYLE:
 - Keep replies under 180 words unless the user asks for a full plan.
 - Use grams and kcal. No emoji.`;
 
+/**
+ * When the coach names specific meals it appends a machine-readable block, so
+ * the app can offer to log them. The block is stripped before display — the
+ * user only ever sees prose.
+ */
+const LOGGABLE = `LOGGING SUGGESTED MEALS:
+When your answer names one or more specific meals or foods with a calorie figure, append this
+block to the very end of your reply, after all prose:
+
+<<<LOG
+[{"name":"Chicken and chickpea traybake","calories":520,"protein_g":42,"carbs_g":30,"fat_g":22,"fibre_g":6,"servings":1}]
+LOG>>>
+
+Rules for the block:
+- Only include meals you actually named in the reply. Never invent extras.
+- One entry per meal, at most four.
+- Every number is per one serving of that meal, and must be non-negative.
+- Omit the block entirely when your reply names no specific meal.
+- Never mention the block, and never wrap it in code fences.`;
+
 export function chatSystemPrompt(context: string): string {
   return `${SCOPE}
 
 ${STYLE}
+
+${LOGGABLE}
 
 ${context}`;
 }
@@ -592,6 +614,58 @@ Respond with JSON only:
 Set "recognised" to false and "verdict" to "rejected" only when the photo contains no food and no
 nutrition label. Use "needs_review" when you had to estimate most of the values. Every number must
 be non-negative. Keep each reason under 15 words.`;
+
+/** The recipe equivalent of INGREDIENT_SCAN_PROMPT: read, fill, judge, one call. */
+export const RECIPE_SCAN_PROMPT =
+  `You are a recipe reader for a nutrition diary app.
+
+The user has photographed a recipe - a page from a book, a handwritten card, a screenshot, or a
+finished dish.
+
+STEP 1 - READ
+Pull out the recipe name, how many servings it makes, the ingredient list with quantities, and
+the method. If a photo shows only the finished dish, identify it and reconstruct the usual
+ingredients and method for that dish.
+
+STEP 2 - NUTRITION PER SERVING
+Work out calories, protein, carbohydrates, fat and fibre for ONE serving, from the ingredients
+and the serving count. Never leave one empty. List anything you estimated rather than read in
+"estimated_fields".
+
+STEP 3 - CHECK YOURSELF
+Protein x4 plus carbs x4 plus fat x9 should land within about 20% of the calories per serving.
+Correct your numbers if they do not.
+
+Respond with JSON only:
+{
+  "recognised": true,
+  "name": "recipe name",
+  "description": "one sentence about the dish",
+  "servings": 4,
+  "prep_time_minutes": 15,
+  "cook_time_minutes": 30,
+  "ingredients": ["400g chicken thighs", "1 tbsp olive oil"],
+  "instructions": "Step one. Step two.",
+  "cuisine": "Mediterranean",
+  "calories_per_serving": 0,
+  "protein_per_serving_g": 0,
+  "carbs_per_serving_g": 0,
+  "fat_per_serving_g": 0,
+  "fibre_per_serving_g": 0,
+  "dietary_tags": ["omnivore"],
+  "estimated_fields": ["fibre_per_serving_g"],
+  "verdict": "approved",
+  "confidence": "high",
+  "reasons": ["short note about anything uncertain"]
+}
+
+"dietary_tags" must contain exactly one of "omnivore", "vegetarian", "vegan" or "pescatarian",
+plus any of "dairy-free", "gluten-free", "high-protein", "weight-loss", "high-fibre", "low-carb",
+"low-fat" that apply. "verdict" is "approved", "needs_review" or "rejected". "confidence" is
+"low", "medium" or "high".
+
+Set "recognised" to false only when the photo shows no recipe and no identifiable dish. Every
+number must be non-negative. Keep each reason under 15 words.`;
 /**
  * A client that acts as the calling user. Every query it runs is subject to
  * row level security, so a function can never read another user's rows by
@@ -741,7 +815,7 @@ async function handleChat(
     temperature: 0.4,
   });
 
-  const reply = result.text.trim();
+  const { reply, suggestions } = splitSuggestions(result.text);
 
   const { data: inserted } = await client
     .from("chat_messages")
@@ -759,11 +833,54 @@ async function handleChat(
 
   return json({
     reply,
+    suggestions,
     provider: result.provider,
     model: result.model,
     attempts: result.attempts,
     messageIds: (inserted ?? []).map((row) => row.id),
   });
+}
+
+/**
+ * Pulls the machine-readable meal block off the end of a reply. The user sees
+ * prose; the app gets something it can write to the diary. A malformed block is
+ * dropped rather than shown, because a stray bracket in the chat would be worse
+ * than a missing button.
+ */
+export function splitSuggestions(raw: string): {
+  reply: string;
+  suggestions: Array<Record<string, unknown>>;
+} {
+  const match = raw.match(/<<<LOG([\s\S]*?)LOG>>>/);
+  if (!match) return { reply: raw.trim(), suggestions: [] };
+
+  const reply = raw.replace(match[0], "").trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[1].trim());
+  } catch {
+    return { reply, suggestions: [] };
+  }
+
+  if (!Array.isArray(parsed)) return { reply, suggestions: [] };
+
+  const suggestions = parsed
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .slice(0, 4)
+    .map((item) => ({
+      name: text(item.name, "Meal", 120),
+      calories: round(item.calories, 0),
+      protein_g: round(item.protein_g, 1),
+      carbs_g: round(item.carbs_g, 1),
+      fat_g: round(item.fat_g, 1),
+      fibre_g: round(item.fibre_g, 1),
+      servings: round(item.servings ?? 1, 2) || 1,
+    }))
+    // A "meal" with no energy at all is not worth offering.
+    .filter((item) => item.calories > 0);
+
+  return { reply, suggestions };
 }
 
 // ---------------------------------------------------------------------------

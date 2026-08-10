@@ -209,6 +209,8 @@ export interface ChatMessage {
   /** Local-only preview of the photo the user sent; never persisted. */
   imagePreviewUrl?: string;
   estimate?: MealEstimate | null;
+  /** Meals the coach named, each offered as an editable diary entry. */
+  suggestions?: MealSuggestion[];
   provider?: AiProvider | null;
   createdAt: string;
   /** Set once the user has logged this estimate, so the card stops offering it. */
@@ -225,6 +227,41 @@ export interface FoodReview {
    * a photo scan can be reused on save instead of paying for a second AI call.
    */
   fingerprint?: string;
+}
+
+/** A meal the coach named in a reply, offered for logging. */
+export interface MealSuggestion {
+  name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fibre_g: number;
+  servings: number;
+}
+
+/** One AI call: read the recipe, fill in what it does not show, judge it. */
+export interface RecipeScan {
+  recognised: boolean;
+  draft: {
+    name: string;
+    description: string;
+    servings: number;
+    prep_time_minutes: number;
+    cook_time_minutes: number;
+    instructions: string;
+    cuisine: string;
+    calories_per_serving: number;
+    protein_per_serving_g: number;
+    carbs_per_serving_g: number;
+    fat_per_serving_g: number;
+    fibre_per_serving_g: number;
+    ingredients: string[];
+    dietary_tags: string[];
+  };
+  estimatedFields: string[];
+  review: FoodReview;
+  error?: string;
 }
 
 /** One AI call: read the food, fill in what the photo does not show, judge it. */

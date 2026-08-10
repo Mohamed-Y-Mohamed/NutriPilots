@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.delete-account]
 verify_jwt = true
 
+[functions.promote-food]
+verify_jwt = true
+
 # Runs on a schedule with no user session; guarded by the PURGE_SECRET header.
 [functions.purge-meal-photos]
 verify_jwt = false
