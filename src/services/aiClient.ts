@@ -27,9 +27,9 @@ export async function invokeFunction<T>(name: string, body: unknown): Promise<T>
   const token = sessionData.session?.access_token;
   if (!token) throw new Error("Please sign in first.");
 
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${name}`,
-    {
+  let response: Response;
+  try {
+    response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${name}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -37,8 +37,16 @@ export async function invokeFunction<T>(name: string, body: unknown): Promise<T>
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-    },
-  );
+    });
+  } catch {
+    // A browser reports an undeployed function as "Failed to fetch": Supabase's
+    // router answers the CORS preflight for an unknown function without
+    // allowing `content-type`, so the request is blocked before the 404 is ever
+    // readable. Say something the reader can act on instead.
+    throw new Error(
+      `Could not reach the "${name}" service. It may not be deployed yet, or you may be offline.`,
+    );
+  }
 
   let payload: unknown;
   try {
