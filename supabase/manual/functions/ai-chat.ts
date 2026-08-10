@@ -101,10 +101,13 @@ export interface AiResult {
  * only because it is Groq's sole vision model; it is a reasoning model and
  * needs the flags below to produce an answer rather than a monologue.
  *
- * The OpenRouter models below were each checked to return a usable reply.
- * `google/gemma-4-31b-it:free` and `inclusionai/ling-3.0-tiny:free` are
- * deliberately absent: the first errors on every call, the second returns an
- * empty body.
+ * Every model below was called against its live API and returned a usable
+ * reply. The notable absentees, and why:
+ *   google/gemma-4-31b-it:free            errors on every call
+ *   inclusionai/ling-3.0-tiny:free        returns an empty body
+ *   @cf/openai/gpt-oss-20b                200 with no message content
+ *   @cf/meta/llama-3.2-11b-vision-instruct  403 until a model agreement is
+ *                                           accepted in the Cloudflare console
  */
 export const CHAT_MODELS: ModelSpec[] = [
   { provider: "groq", model: "llama-3.3-70b-versatile", vision: false },
@@ -119,8 +122,8 @@ export const CHAT_MODELS: ModelSpec[] = [
   // Groq cannot take is better served by a slow answer than by no answer.
   { provider: "openrouter", model: "nvidia/nemotron-nano-12b-v2-vl:free", vision: true },
   { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", vision: false },
-  { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct", vision: false },
-  { provider: "cloudflare", model: "@cf/meta/llama-3.2-11b-vision-instruct", vision: true },
+  { provider: "cloudflare", model: "@cf/meta/llama-4-scout-17b-16e-instruct", vision: true },
+  { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct-fp8", vision: false },
 ];
 
 /** Verification is kept off the chat quota entirely. */
@@ -128,7 +131,7 @@ export const VERIFY_MODELS: ModelSpec[] = [
   { provider: "openrouter", model: "openai/gpt-oss-20b:free", vision: false },
   { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free", vision: false },
   { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free", vision: false },
-  { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct", vision: false },
+  { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct-fp8", vision: false },
   { provider: "groq", model: "llama-3.1-8b-instant", vision: false },
 ];
 

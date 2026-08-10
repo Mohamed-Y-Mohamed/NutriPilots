@@ -55,8 +55,8 @@ first, so one model running out of free quota costs a retry rather than the whol
 
 | Purpose | Chain |
 | --- | --- |
-| Chat and photos | Groq `llama-3.3-70b` → `gpt-oss-120b` → `qwen3.6-27b` (vision) → `gpt-oss-20b` → `llama-3.1-8b` → OpenRouter `gpt-oss-20b` → `nemotron-3-super` → `nemotron-nano-9b` → `nemotron-nano-12b-vl` (vision) |
-| Food verification | OpenRouter free tier (`gpt-oss-20b` → `nemotron-3-super` → `nemotron-nano-9b`) → Groq `llama-3.1-8b` |
+| Chat and photos | Groq `llama-3.3-70b` → `gpt-oss-120b` → `qwen3.6-27b` (vision) → `gpt-oss-20b` → `llama-3.1-8b` → OpenRouter `gpt-oss-20b` → `nemotron-3-super` → `nemotron-nano-9b` → `nemotron-nano-12b-vl` (vision) → Cloudflare `llama-3.3-70b-fp8-fast` → `llama-4-scout` (vision) → `llama-3.1-8b-fp8` |
+| Food verification | OpenRouter (`gpt-oss-20b` → `nemotron-3-super` → `nemotron-nano-9b`) → Cloudflare `llama-3.1-8b-fp8` → Groq `llama-3.1-8b` |
 
 Verification runs on a separate provider so adding a food never eats the quota the chat depends
 on. Switching is **invisible** — the user is only ever told anything when every model on every
@@ -66,10 +66,21 @@ Requests with an image skip text-only models automatically. A 400 means that ven
 request, so the rest of its models are skipped — but the next vendor is still tried, because a
 request one provider refuses another often accepts.
 
-Gemini was removed after testing: `gemini-2.5-*` returns 404 "no longer available to new users"
-and the 3.x models reject the thinking config the older ones needed, so the entire fallback was
-dead. `google/gemma-4-31b-it:free` and `inclusionai/ling-3.0-tiny:free` are also absent — the
-first errors on every call, the second returns an empty body.
+Every model in those chains was called against its live API and returned a usable reply. The
+notable absentees, and why:
+
+| Model | Why it is not in the chain |
+| --- | --- |
+| `gemini-2.5-flash`, `2.5-flash-lite` | 404 "no longer available to new users" |
+| `gemini-3.x` | rejects the thinking config the 2.5 models required |
+| `google/gemma-4-31b-it:free` | errors on every call |
+| `inclusionai/ling-3.0-tiny:free` | returns an empty body |
+| `@cf/openai/gpt-oss-20b` | 200 with no message content |
+| `@cf/meta/llama-3.2-11b-vision-instruct` | 403 until a model agreement is accepted |
+
+Cloudflare needs **two** secrets, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; it is
+skipped entirely unless both are set, so a half-configured provider cannot cause confusing
+failures.
 
 Reasoning models are a trap here: left alone, `qwen3.6-27b` spends its entire output budget on a
 `<think>` monologue and returns a truncated block instead of an answer. It is sent
