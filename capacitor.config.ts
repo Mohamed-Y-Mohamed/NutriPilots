@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const SPLASH_GREEN = "#333E24";
+const SPLASH_GREEN = "#071F18";
 
 const config: CapacitorConfig = {
   appId: "com.nutripilot.app",

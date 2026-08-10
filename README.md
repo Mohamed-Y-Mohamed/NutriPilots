@@ -9,11 +9,10 @@ React 19 · TypeScript · Vite 7 · Tailwind CSS 4 · Supabase · Capacitor 8 (A
 
 ## What it does
 
-**Diary** — Search 2,463 reference foods or 792 recipes, or pick from foods you have logged
-before, then set the portion and add it to breakfast, lunch, dinner or snacks.
-
-**Library** — Add your own ingredients and recipes. Every submission is checked by AI for
-physical plausibility before it is saved; nothing impossible gets into your library.
+**Add food** — Search 2,463 reference foods or 792 recipes, or pick from foods you have logged
+before, then set the portion and add it to breakfast, lunch, dinner or snacks. You can also add
+your own ingredients and recipes here; every submission is checked by AI for physical
+plausibility before it is saved, so nothing impossible gets in.
 
 **Recipes** — Filter by diet or by ingredients you already have. On a recipe you can set how
 many servings you ate and tell the app where you went heavier or lighter, and the macros follow.
@@ -56,7 +55,7 @@ first, so one model running out of free quota costs a retry rather than the whol
 
 | Purpose | Chain |
 | --- | --- |
-| Chat and photos | Groq `qwen3.6-27b` → `llama-3.3-70b` → `gpt-oss-120b` → `gpt-oss-20b` → `llama-3.1-8b` → Gemini `2.5-flash` → `2.5-flash-lite` → `3.6-flash` |
+| Chat and photos | Groq `llama-3.3-70b` → `gpt-oss-120b` → `qwen3.6-27b` (vision) → `gpt-oss-20b` → `llama-3.1-8b` → Gemini `2.5-flash` → `2.5-flash-lite` → `3.6-flash` |
 | Food verification | OpenRouter free tier (`gpt-oss-20b` → `gemma-4-31b` → `nemotron-3-super` → `ling-3.0-tiny`) → Groq `llama-3.1-8b` |
 
 Verification runs on a separate provider so adding a food never eats the quota the chat depends
@@ -65,6 +64,11 @@ provider is exhausted, and then it says the daily limit is reached.
 
 Requests with an image skip text-only models automatically. A 400 aborts the chain rather than
 replaying a malformed request against every vendor.
+
+Reasoning models are a trap here: left alone, `qwen3.6-27b` spends its entire output budget on a
+`<think>` monologue and returns a truncated block instead of an answer. It is sent
+`reasoning_effort: "none"`, its output is stripped of thought tags defensively, and a response
+that is empty once stripped counts as a failure so the next model gets a turn.
 
 ### Meal photo lifecycle
 
@@ -86,6 +90,9 @@ npm run dev
 ```
 
 ### Provisioning Supabase
+
+No access token? Follow **[DEPLOY.md](DEPLOY.md)** — pasteable SQL and self-contained function
+files for the Supabase dashboard. Otherwise:
 
 Creating tables, the storage bucket, function secrets, and deploying Edge Functions needs a
 **Supabase Personal Access Token** — the publishable key cannot do any of it.
@@ -138,7 +145,7 @@ npm run android:build   # assembleRelease
 ```
 
 - Application ID `com.nutripilot.app`, minSdk 24, target/compile SDK 36.
-- Launcher icons and splash are generated from `assets/logo.png` onto `#333E24` olive.
+- Launcher icons and splash are generated from `assets/logo.png` onto `#071F18` deep olive.
 - `launchAutoHide: false` — the app hides the native splash itself once the session resolves, so
   there is no white flash and no half-drawn screen.
 - Camera and photo-library permissions are declared; a device with no camera can still choose a

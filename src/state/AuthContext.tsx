@@ -23,6 +23,12 @@ interface AuthContextValue {
   signUp: (email: string, password: string, name: string) => Promise<SignUpOutcome>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Clears the session without calling the server. Needed after the account has
+   * been deleted, when a normal sign-out would fail because the user the token
+   * refers to no longer exists.
+   */
+  signOutLocal: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -92,6 +98,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (!supabase) return;
         const { error } = await supabase.auth.signOut();
         if (error) throw new Error(error.message);
+      },
+
+      signOutLocal: async () => {
+        if (!supabase) return;
+        // `scope: "local"` skips the network round trip entirely.
+        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+        setSession(null);
       },
     }),
     [session, isLoading],

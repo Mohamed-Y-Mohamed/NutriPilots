@@ -17,7 +17,8 @@
     "cap:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:build": "npm run cap:sync && cd android && ./gradlew assembleRelease",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "bundle:functions": "node scripts/bundle-functions.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

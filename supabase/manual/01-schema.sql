@@ -1,3 +1,12 @@
+-- ============================================================================
+-- NutriPilot — step 1 of 2: schema, row level security, and the My Foods RPC
+--
+-- GENERATED from supabase/migrations/ — do not edit here.
+-- Paste the whole file into the Supabase SQL editor and run it.
+-- Idempotent: safe to run more than once.
+-- Does NOT touch public.ingredients or public.recipes.
+-- ============================================================================
+
 -- NutriPilot v1 — per-user data model.
 --
 -- Idempotent. Safe to re-run. Does NOT touch the populated reference tables
@@ -312,33 +321,6 @@ $$;
 -- public.ingredients and public.recipes are deliberately NOT touched by this
 -- migration — not their columns, constraints, indexes, or RLS state. They are
 -- already populated reference data and the app only ever reads from them.
-
--- ---------------------------------------------------------------------------
--- Storage: meal-photos (private, one folder per user)
--- ---------------------------------------------------------------------------
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('meal-photos', 'meal-photos', false, 10485760,
-        array['image/jpeg','image/png','image/webp'])
-on conflict (id) do update
-  set public             = excluded.public,
-      file_size_limit    = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists meal_photos_select_own on storage.objects;
-create policy meal_photos_select_own on storage.objects
-  for select to authenticated
-  using (bucket_id = 'meal-photos' and (storage.foldername(name))[1] = auth.uid()::text);
-
-drop policy if exists meal_photos_insert_own on storage.objects;
-create policy meal_photos_insert_own on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'meal-photos' and (storage.foldername(name))[1] = auth.uid()::text);
-
-drop policy if exists meal_photos_delete_own on storage.objects;
-create policy meal_photos_delete_own on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'meal-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ---------------------------------------------------------------------------
 -- "My foods" — most recently logged distinct foods for the calling user

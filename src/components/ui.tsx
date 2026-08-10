@@ -1,12 +1,14 @@
 import { ImageOff, LoaderCircle, X } from "lucide-react";
 import {
   useEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type ImgHTMLAttributes,
   type PropsWithChildren,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 export function cx(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(" ");
@@ -434,7 +436,9 @@ export function Sheet({
     };
   }, [onClose]);
 
-  return (
+  // Rendered into <body>, not into the page. Inside the page it competed with
+  // the fixed bottom navigation and the footer buttons ended up underneath it.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -442,7 +446,7 @@ export function Sheet({
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      className="animate-fade-in fixed inset-0 z-50 flex items-end justify-center bg-olive-deep/50 backdrop-blur-[2px] sm:items-center sm:p-6"
+      className="animate-fade-in fixed inset-0 z-200 flex items-end justify-center bg-olive-deep/60 backdrop-blur-[2px] sm:items-center sm:p-6"
     >
       <div className="animate-sheet flex max-h-[92svh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border border-line bg-surface sm:max-h-[86svh] sm:rounded-3xl">
         <div className="relative shrink-0 border-b border-line-soft px-5 pb-4 pt-4">
@@ -461,14 +465,140 @@ export function Sheet({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
 
         {footer && (
-          <div className="pb-safe shrink-0 grid gap-2.5 border-t border-line-soft bg-muted/60 px-5 py-4">
+          <div className="grid shrink-0 gap-2.5 border-t border-line-soft bg-muted/60 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {footer}
           </div>
         )}
       </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Loading skeletons                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A skeleton says "this is loading and here is roughly what will appear".
+ * A spinner says "something is happening somewhere". The first is calmer, so
+ * it is the default everywhere a layout is predictable.
+ */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden="true" className={cx("animate-pulse rounded-md bg-muted", className)} />;
+}
+
+export function SkeletonBlock({
+  lines = 3,
+  className,
+}: {
+  lines?: number;
+  className?: string;
+}) {
+  return (
+    <div className={cx("grid gap-2", className)} aria-hidden="true">
+      {Array.from({ length: lines }, (_, index) => (
+        <Skeleton
+          key={index}
+          className={cx("h-3", index === lines - 1 ? "w-2/3" : "w-full")}
+        />
+      ))}
     </div>
   );
+}
+
+/** Mirrors the shape of a FoodRow so the list does not jump when data lands. */
+export function SkeletonList({ rows = 6 }: { rows?: number }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading results"
+      className="divide-y divide-line-soft overflow-hidden rounded-2xl border border-line bg-surface"
+    >
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 px-3 py-3 sm:px-4">
+          <Skeleton className="size-12 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1 grid gap-2">
+            <Skeleton className="h-3.5 w-1/2" />
+            <Skeleton className="h-2.5 w-1/3" />
+          </div>
+          <div className="grid shrink-0 justify-items-end gap-2">
+            <Skeleton className="h-3.5 w-12" />
+            <Skeleton className="h-2.5 w-20" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonCards({ count = 6, height = "h-64" }: { count?: number; height?: string }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+    >
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="overflow-hidden rounded-2xl border border-line bg-surface">
+          <Skeleton className={cx("w-full rounded-none", height === "h-64" ? "h-40" : height)} />
+          <div className="grid gap-2.5 p-4">
+            <Skeleton className="h-2.5 w-1/3" />
+            <Skeleton className="h-4 w-4/5" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Typewriter                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Reveals text at roughly 900 characters per second — quick enough that a fast
+ * reader never waits, slow enough that the answer feels like it is being
+ * written rather than pasted. Honours reduced-motion by showing it instantly.
+ */
+export function useTypewriter(text: string, enabled: boolean): string {
+  const [shown, setShown] = useState(() => (enabled ? "" : text));
+  const frame = useRef(0);
+
+  useEffect(() => {
+    const reduced =
+      typeof matchMedia === "function" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (!enabled || reduced || !text) {
+      setShown(text);
+      return;
+    }
+
+    setShown("");
+    let start: number | null = null;
+    const charactersPerMs = 0.9;
+
+    const step = (timestamp: number) => {
+      start ??= timestamp;
+      const count = Math.floor((timestamp - start) * charactersPerMs);
+
+      if (count >= text.length) {
+        setShown(text);
+        return;
+      }
+      setShown(text.slice(0, count));
+      frame.current = requestAnimationFrame(step);
+    };
+
+    frame.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame.current);
+  }, [text, enabled]);
+
+  return shown;
 }

@@ -13,7 +13,7 @@ import {
   Page,
   PageHeader,
   Segmented,
-  Spinner,
+  SkeletonList,
 } from "../components/ui";
 import { formatDayLabel } from "../lib/dates";
 import { loadRecentFoods } from "../services/diaryRepository";
@@ -224,7 +224,7 @@ export function DiaryPage() {
 
       <div className="mt-4">
         {loading ? (
-          <Spinner label="Loading…" />
+          <SkeletonList rows={7} />
         ) : tab === "ingredients" ? (
           <IngredientResults items={ingredients} onSelect={setSelected} />
         ) : tab === "recipes" ? (

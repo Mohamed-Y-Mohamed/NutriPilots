@@ -1,15 +1,17 @@
-import { ChefHat, Search, SlidersHorizontal } from "lucide-react";
+import { Check, ChefHat, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
-  Chip,
+  Button,
+  cx,
   EmptyState,
   FoodImage,
+  inputClass,
   Page,
   PageHeader,
-  Spinner,
+  SkeletonCards,
 } from "../components/ui";
 import { loadRecipes } from "../services/foodSearch";
 import type { DietTag, Recipe } from "../types";
@@ -93,20 +95,45 @@ export function RecipesPage() {
     setParams(next, { replace: true });
   };
 
-  const toggleDiet = (value: DietTag | "all") => {
-    if (value === "all") {
-      updateParam("diet", "");
-      return;
-    }
-    let next = selectedTags.includes(value)
-      ? selectedTags.filter((item) => item !== value)
-      : [...selectedTags, value];
+  // Filter choices are held locally and only committed on Apply, so the list
+  // does not thrash while the user is still deciding.
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [draftTags, setDraftTags] = useState<DietTag[]>(selectedTags);
+  const [draftIngredients, setDraftIngredients] = useState(ingredientInput);
 
-    if (BASE_DIETS.has(value) && !selectedTags.includes(value)) {
-      next = next.filter((item) => item === value || !BASE_DIETS.has(item));
-    }
-    updateParam("diet", next.join(","));
+  const openPanel = () => {
+    setDraftTags(selectedTags);
+    setDraftIngredients(ingredientInput);
+    setPanelOpen(true);
   };
+
+  const toggleDraftTag = (value: DietTag) => {
+    setDraftTags((current) => {
+      if (current.includes(value)) return current.filter((item) => item !== value);
+      // A recipe carries exactly one base diet, so picking one replaces the other.
+      const next = BASE_DIETS.has(value)
+        ? current.filter((item) => !BASE_DIETS.has(item))
+        : current;
+      return [...next, value];
+    });
+  };
+
+  const applyFilters = () => {
+    const next = new URLSearchParams(params);
+    if (draftTags.length > 0) next.set("diet", draftTags.join(","));
+    else next.delete("diet");
+    if (draftIngredients.trim()) next.set("ingredients", draftIngredients.trim());
+    else next.delete("ingredients");
+    setParams(next, { replace: true });
+    setPanelOpen(false);
+  };
+
+  const clearFilters = () => {
+    setDraftTags([]);
+    setDraftIngredients("");
+  };
+
+  const activeFilterCount = selectedTags.length + (wantedIngredients.length > 0 ? 1 : 0);
 
   return (
     <Page>
@@ -115,50 +142,110 @@ export function RecipesPage() {
         subtitle="Filter by diet, or match recipes to the ingredients you already have."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex min-h-12 items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 focus-within:border-brand">
-          <Search size={18} className="shrink-0 text-ink-faint" aria-hidden="true" />
-          <span className="sr-only">Search recipes</span>
-          <input
-            value={search}
-            onChange={(event) => updateParam("q", event.target.value)}
-            placeholder="Search recipes or cuisine…"
-            className="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
-          />
-        </label>
-
-        <label className="flex min-h-12 items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 focus-within:border-brand">
-          <SlidersHorizontal size={17} className="shrink-0 text-ink-faint" aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-medium uppercase tracking-wide text-ink-faint">
-              Cook with what I have
-            </span>
-            <input
-              value={ingredientInput}
-              onChange={(event) => updateParam("ingredients", event.target.value)}
-              placeholder="chicken, rice, peppers"
-              className="w-full bg-transparent text-[13px] outline-none"
-            />
-          </span>
-        </label>
-      </div>
-
-      <div
-        role="group"
-        aria-label="Diet filters"
-        className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
-      >
-        {FILTERS.map((filter) => (
-          <Chip
-            key={filter.value}
-            active={
-              filter.value === "all" ? selectedTags.length === 0 : selectedTags.includes(filter.value)
-            }
-            onClick={() => toggleDiet(filter.value)}
+      <label className="flex min-h-12 items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 focus-within:border-brand">
+        <Search size={18} className="shrink-0 text-ink-faint" aria-hidden="true" />
+        <span className="sr-only">Search recipes</span>
+        <input
+          value={search}
+          onChange={(event) => updateParam("q", event.target.value)}
+          placeholder="Search recipes or cuisine…"
+          className="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => updateParam("q", "")}
+            aria-label="Clear search"
+            className="shrink-0 text-ink-faint hover:text-ink"
           >
-            {filter.label}
-          </Chip>
-        ))}
+            <X size={16} />
+          </button>
+        )}
+      </label>
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => (panelOpen ? setPanelOpen(false) : openPanel())}
+          aria-expanded={panelOpen}
+          aria-controls="recipe-filters"
+          className={cx(
+            "flex min-h-11 w-full items-center gap-2.5 rounded-xl border px-3.5 text-left text-sm font-medium transition-colors",
+            activeFilterCount > 0 || panelOpen
+              ? "border-brand bg-brand-soft text-brand"
+              : "border-line bg-surface text-ink-muted",
+          )}
+        >
+          <SlidersHorizontal size={17} aria-hidden="true" />
+          <span className="flex-1">
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="ml-1.5 text-xs font-normal">({activeFilterCount} applied)</span>
+            )}
+          </span>
+          <ChevronDown
+            size={17}
+            aria-hidden="true"
+            className={cx("transition-transform duration-200", panelOpen && "rotate-180")}
+          />
+        </button>
+
+        {panelOpen && (
+          <div
+            id="recipe-filters"
+            className="animate-rise mt-2 rounded-2xl border border-line bg-surface p-4"
+          >
+            <fieldset>
+              <legend className="text-xs font-medium text-ink-muted">Diet</legend>
+              <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+                {FILTERS.filter((filter) => filter.value !== "all").map((filter) => {
+                  const value = filter.value as DietTag;
+                  const checked = draftTags.includes(value);
+                  return (
+                    <label
+                      key={value}
+                      className="flex min-h-10 cursor-pointer items-center gap-2.5 text-[13px]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleDraftTag(value)}
+                        className="size-4 shrink-0 accent-brand"
+                      />
+                      <span className={checked ? "font-medium text-ink" : "text-ink-muted"}>
+                        {filter.label}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <label className="mt-4 grid gap-1.5">
+              <span className="text-xs font-medium text-ink-muted">
+                Filter by ingredients I have
+              </span>
+              <input
+                value={draftIngredients}
+                onChange={(event) => setDraftIngredients(event.target.value)}
+                placeholder="chicken, rice, peppers"
+                className={inputClass}
+              />
+              <span className="text-[11px] text-ink-faint">
+                Separate with commas. Recipes are ranked by how many they match.
+              </span>
+            </label>
+
+            <div className="mt-4 flex gap-2">
+              <Button variant="primary" className="flex-1" onClick={applyFilters}>
+                <Check size={16} /> Apply filters
+              </Button>
+              <Button variant="ghost" onClick={clearFilters}>
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <p className="mt-4 mb-3 text-xs text-ink-muted">
@@ -169,7 +256,7 @@ export function RecipesPage() {
       </p>
 
       {loading ? (
-        <Spinner label="Loading recipes…" />
+        <SkeletonCards count={6} />
       ) : error ? (
         <Alert tone="error">{error}</Alert>
       ) : filtered.length === 0 ? (

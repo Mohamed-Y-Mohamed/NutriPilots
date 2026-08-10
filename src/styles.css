@@ -23,8 +23,8 @@
   --color-brand-soft: #e6f4ee;
   --color-lime: #c9e86b;
   --color-lime-strong: #d6f086;
-  --color-olive: #333e24;
-  --color-olive-deep: #26301b;
+  --color-olive: #071f18;
+  --color-olive-deep: #040f0c;
 
   --color-danger: #c0483f;
   --color-danger-soft: #fdf0ef;
@@ -143,6 +143,15 @@
   }
   .pb-tabbar {
     padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+
+  /* Exactly the space left between the fixed header and the fixed tab bar.
+     A screen using this fills the viewport without ever scrolling the page,
+     so anything it pins to its own bottom sits just above the navigation. */
+  .h-app {
+    height: calc(
+      100svh - 3.5rem - env(safe-area-inset-top) - 4.25rem - env(safe-area-inset-bottom)
+    );
   }
 
   .animate-fade-in {

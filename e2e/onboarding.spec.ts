@@ -14,7 +14,7 @@ test.describe("first run", () => {
     await expect(splash).toBeVisible();
 
     // The splash must be the brand colour, not a default white flash.
-    await expect(splash).toHaveCSS("background-color", "rgb(51, 62, 36)");
+    await expect(splash).toHaveCSS("background-color", "rgb(7, 31, 24)");
 
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
       timeout: 10_000,
@@ -23,7 +23,7 @@ test.describe("first run", () => {
   });
 
   test("redirects every protected route to sign up", async ({ page }) => {
-    for (const route of ["/diary", "/recipes", "/library", "/coach", "/settings"]) {
+    for (const route of ["/diary", "/recipes", "/coach", "/goals", "/settings"]) {
       await page.goto(route);
       await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
         timeout: 10_000,

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Olive splash green, matching capacitor.config.ts and the web splash. -->
-    <color name="colorPrimary">#333E24</color>
-    <color name="colorPrimaryDark">#26301B</color>
+    <color name="colorPrimary">#071F18</color>
+    <color name="colorPrimaryDark">#040F0C</color>
     <color name="colorAccent">#17966F</color>
-    <color name="splashBackground">#333E24</color>
+    <color name="splashBackground">#071F18</color>
 </resources>

@@ -1,4 +1,13 @@
-import { Bot, ChevronLeft, ChevronRight, Plus, Trash2, UtensilsCrossed } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Target,
+  Trash2,
+  UtensilsCrossed,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Alert,
@@ -9,15 +18,26 @@ import {
   MacroBar,
   Page,
   PageHeader,
-  Spinner,
+  Skeleton,
+  SkeletonBlock,
 } from "../components/ui";
 import { addDays, formatDayLabel, localDateKey } from "../lib/dates";
 import { useAppData } from "../state/AppDataContext";
 import { MEALS, type DiaryEntry, type MealName } from "../types";
 
 export function DashboardPage() {
-  const { profile, targets, diary, totals, date, setDate, isLoading, error, removeDiaryEntry } =
-    useAppData();
+  const {
+    profile,
+    hasProfile,
+    targets,
+    diary,
+    totals,
+    date,
+    setDate,
+    isLoading,
+    error,
+    removeDiaryEntry,
+  } = useAppData();
   const navigate = useNavigate();
 
   const remaining = targets.calories - totals.calories;
@@ -59,6 +79,9 @@ export function DashboardPage() {
         </Alert>
       )}
 
+      {!hasProfile ? (
+        <GoalPrompt onStart={() => navigate("/goals")} />
+      ) : (
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-4">
@@ -89,6 +112,7 @@ export function DashboardPage() {
           </div>
         </Card>
       </div>
+      )}
 
       <Link
         to="/coach"
@@ -111,7 +135,7 @@ export function DashboardPage() {
       </h2>
 
       {isLoading ? (
-        <Spinner label="Loading your diary…" />
+        <DiarySkeleton />
       ) : diary.length === 0 ? (
         <Card>
           <EmptyState
@@ -252,4 +276,42 @@ function describePortion(entry: DiaryEntry): string {
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function GoalPrompt({ onStart }: { onStart: () => void }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:gap-6">
+        <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand">
+          <Target size={22} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-semibold tracking-tight">Set your daily target</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
+            Tell NutriPilot your height, weight, activity level and what you want to achieve, and
+            it will work out the calories and macros that actually fit you. It takes a minute.
+          </p>
+        </div>
+        <Button variant="primary" size="lg" onClick={onStart} className="shrink-0">
+          Add my target goal <ArrowRight size={17} />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function DiarySkeleton() {
+  return (
+    <div role="status" aria-label="Loading your diary" className="grid gap-3">
+      {[0, 1, 2].map((group) => (
+        <Card key={group} className="px-4 py-4 sm:px-5">
+          <div className="mb-3 flex items-center justify-between">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-12" />
+          </div>
+          <SkeletonBlock lines={2} />
+        </Card>
+      ))}
+    </div>
+  );
 }

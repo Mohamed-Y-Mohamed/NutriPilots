@@ -19,6 +19,11 @@ export interface ModelSpec {
   model: string;
   /** Only vision models are considered when the request carries an image. */
   vision: boolean;
+  /**
+   * Reasoning models emit a <think> block and will happily spend the entire
+   * output budget on it. They need to be told not to.
+   */
+  reasoning?: boolean;
 }
 
 export interface AiMessage {
@@ -56,9 +61,9 @@ export interface AiResult {
  * usually still have free quota left.
  */
 export const CHAT_MODELS: ModelSpec[] = [
-  { provider: "groq", model: "qwen/qwen3.6-27b", vision: true },
   { provider: "groq", model: "llama-3.3-70b-versatile", vision: false },
   { provider: "groq", model: "openai/gpt-oss-120b", vision: false },
+  { provider: "groq", model: "qwen/qwen3.6-27b", vision: true, reasoning: true },
   { provider: "groq", model: "openai/gpt-oss-20b", vision: false },
   { provider: "groq", model: "llama-3.1-8b-instant", vision: false },
   { provider: "gemini", model: "gemini-2.5-flash", vision: true },
@@ -236,6 +241,10 @@ async function openAiRequest(
       messages,
       temperature: request.temperature ?? 0.3,
       max_completion_tokens: request.maxTokens ?? 900,
+      // A reasoning model left alone spends the whole output budget thinking
+      // and returns a truncated <think> block instead of an answer. Both flags
+      // are sent because providers differ in which one they honour.
+      ...(spec.reasoning ? { reasoning_format: "hidden", reasoning_effort: "none" } : {}),
       ...(request.json ? { response_format: { type: "json_object" } } : {}),
     }),
   });
@@ -257,11 +266,42 @@ async function openAiRequest(
     throw new AiError(`${spec.provider}: ${message}`, 502, isRetryable(502, message));
   }
 
-  const text = completion?.choices?.[0]?.message?.content;
-  if (typeof text !== "string" || !text.trim()) {
-    throw new AiError(`${spec.model} returned an empty response.`, 502, true);
+  const raw = completion?.choices?.[0]?.message?.content;
+  const text = cleanModelText(typeof raw === "string" ? raw : "");
+
+  if (!text) {
+    // Usually a reasoning model that spent its whole budget thinking. The next
+    // model gets a turn rather than the user getting a wall of monologue.
+    const reason = completion?.choices?.[0]?.finish_reason ?? "unknown";
+    throw new AiError(
+      `${spec.model} returned no usable answer (finish_reason=${reason}).`,
+      502,
+      true,
+    );
   }
   return text;
+}
+
+/**
+ * Strips a model's internal monologue. Reasoning models are asked not to emit
+ * one, but the flags are not honoured identically everywhere, so the output is
+ * cleaned defensively — a user must never see the prompt scaffolding.
+ */
+export function cleanModelText(raw: string): string {
+  let text = raw;
+
+  // Complete blocks, in any of the tag spellings these models use.
+  text = text.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*?<\/\1>/gi, "");
+
+  // An unclosed opener means the answer was truncated mid-thought: nothing
+  // after it is usable.
+  text = text.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/i, "");
+
+  // A stray closer leaves the real answer after it.
+  const closer = text.lastIndexOf("</think>");
+  if (closer !== -1) text = text.slice(closer + "</think>".length);
+
+  return text.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -314,11 +354,17 @@ async function callGemini(
 
   const completion = await response.json();
   const parts = completion?.candidates?.[0]?.content?.parts;
-  const text = Array.isArray(parts)
-    ? parts.map((part: { text?: string }) => part?.text ?? "").join("")
+  const joined = Array.isArray(parts)
+    ? parts
+      // Gemini marks reasoning parts; they are not for the user.
+      .filter((part: { thought?: boolean }) => part?.thought !== true)
+      .map((part: { text?: string }) => part?.text ?? "")
+      .join("")
     : "";
 
-  if (!text.trim()) {
+  const text = cleanModelText(joined);
+
+  if (!text) {
     const reason = completion?.candidates?.[0]?.finishReason ?? "unknown";
     throw new AiError(`${spec.model} returned no text (${reason}).`, 502, true);
   }

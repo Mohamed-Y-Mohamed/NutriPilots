@@ -28,6 +28,8 @@ import { useTheme } from "./ThemeContext";
 
 interface AppDataValue {
   profile: UserProfile;
+  /** False until the user has actually saved their goals. */
+  hasProfile: boolean;
   targets: DailyTargets;
   date: string;
   setDate: (date: string) => void;
@@ -50,6 +52,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
   const { preference, setPreference } = useTheme();
 
   const [profile, setProfileState] = useState<UserProfile>(DEFAULT_PROFILE);
+  const [hasProfile, setHasProfile] = useState(false);
   const [date, setDate] = useState(() => localDateKey());
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -72,14 +75,22 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     try {
       const [loadedProfile, entries] = await Promise.all([loadProfile(), loadDiary(date)]);
 
-      if (loadedProfile) {
+      if (loadedProfile?.onboarded) {
         setProfileState(loadedProfile);
+        setHasProfile(true);
         if (!themeHydrated.current) {
           themeHydrated.current = true;
           if (loadedProfile.theme !== preference) setPreference(loadedProfile.theme);
         }
       } else {
-        setProfileState({ ...DEFAULT_PROFILE, theme: preference });
+        // A brand-new account gets no invented body stats — the dashboard asks
+        // for them instead of showing a target derived from nothing.
+        setProfileState({ ...DEFAULT_PROFILE, theme: loadedProfile?.theme ?? preference });
+        setHasProfile(false);
+        if (loadedProfile && !themeHydrated.current) {
+          themeHydrated.current = true;
+          if (loadedProfile.theme !== preference) setPreference(loadedProfile.theme);
+        }
       }
 
       setDiary(entries);
@@ -110,6 +121,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
       if (!user) throw new Error("Please sign in to save your goals.");
       await saveProfile(user.id, next);
       setProfileState(next);
+      setHasProfile(next.onboarded);
       themeHydrated.current = true;
     },
     [user],
@@ -142,11 +154,13 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     await resetHealthData(user.id, preference);
     setDiary([]);
     setProfileState({ ...DEFAULT_PROFILE, theme: preference });
+    setHasProfile(false);
   }, [user, preference]);
 
   const value = useMemo<AppDataValue>(
     () => ({
       profile,
+      hasProfile,
       targets: calculateDailyTargets(profile),
       date,
       setDate,
@@ -163,6 +177,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     }),
     [
       profile,
+      hasProfile,
       date,
       diary,
       isLoading,

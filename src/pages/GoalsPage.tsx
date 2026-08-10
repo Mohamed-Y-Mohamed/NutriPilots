@@ -1,16 +1,25 @@
 import { Check, Ruler, Target } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, cx, Field, inputClass, Page, PageHeader } from "../components/ui";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  cx,
+  Field,
+  inputClass,
+  Page,
+  PageHeader,
+} from "../components/ui";
 import { calculateDailyTargets } from "../lib/nutrition";
 import { useAppData } from "../state/AppDataContext";
 import type { ActivityLevel, GoalMode, UserProfile } from "../types";
 
-const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string }> = [
-  { value: "sedentary", label: "Mostly sitting" },
-  { value: "light", label: "Lightly active" },
-  { value: "moderate", label: "Moderately active" },
-  { value: "very", label: "Very active" },
-  { value: "athlete", label: "Athlete" },
+const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string; detail: string }> = [
+  { value: "sedentary", label: "Mostly sitting", detail: "Little or no exercise" },
+  { value: "light", label: "Lightly active", detail: "1–2 sessions a week" },
+  { value: "moderate", label: "Moderately active", detail: "3–4 sessions a week" },
+  { value: "very", label: "Very active", detail: "5–6 sessions a week" },
+  { value: "athlete", label: "Athlete", detail: "Daily hard training" },
 ];
 
 const GOAL_OPTIONS: Array<{ value: GoalMode; label: string; detail: string }> = [
@@ -21,26 +30,69 @@ const GOAL_OPTIONS: Array<{ value: GoalMode; label: string; detail: string }> = 
   { value: "gain", label: "Gain", detail: "Add weight faster" },
 ];
 
+/** Numeric fields are strings so a new user sees empty boxes, not invented values. */
+interface FormState {
+  name: string;
+  age: string;
+  calculationSex: UserProfile["calculationSex"];
+  heightCm: string;
+  weightKg: string;
+  targetWeightKg: string;
+  activityLevel: ActivityLevel | "";
+  goalMode: GoalMode | "";
+}
+
+const EMPTY: FormState = {
+  name: "",
+  age: "",
+  calculationSex: "female",
+  heightCm: "",
+  weightKg: "",
+  targetWeightKg: "",
+  activityLevel: "",
+  goalMode: "",
+};
+
 export function GoalsPage() {
-  const { profile, saveUserProfile } = useAppData();
-  const [draft, setDraft] = useState<UserProfile>(profile);
+  const { profile, hasProfile, saveUserProfile } = useAppData();
+  const [form, setForm] = useState<FormState>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The profile arrives after the first render, so the form has to catch up.
-  useEffect(() => setDraft(profile), [profile]);
+  // Only pre-fill once the user genuinely has saved goals before.
+  useEffect(() => {
+    if (!hasProfile) return;
+    setForm({
+      name: profile.name,
+      age: String(profile.age),
+      calculationSex: profile.calculationSex,
+      heightCm: String(profile.heightCm),
+      weightKg: String(profile.weightKg),
+      targetWeightKg: String(profile.targetWeightKg),
+      activityLevel: profile.activityLevel,
+      goalMode: profile.goalMode,
+    });
+  }, [hasProfile, profile]);
 
-  const targets = useMemo(() => calculateDailyTargets(draft), [draft]);
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm((current) => ({ ...current, [key]: value }));
 
-  const set = <K extends keyof UserProfile>(key: K, value: UserProfile[K]) =>
-    setDraft((current) => ({ ...current, [key]: value }));
+  const missing = requiredMissing(form);
+  const complete = missing.length === 0;
+
+  // The preview only appears once there is enough to calculate honestly.
+  const targets = useMemo(
+    () => (complete ? calculateDailyTargets(toProfile(form, profile.theme)) : null),
+    [complete, form, profile.theme],
+  );
 
   const save = async () => {
+    if (!complete || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await saveUserProfile({ ...draft, onboarded: true });
+      await saveUserProfile(toProfile(form, profile.theme));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2200);
     } catch (reason) {
@@ -53,30 +105,28 @@ export function GoalsPage() {
   return (
     <Page>
       <PageHeader
-        title="Your goals"
-        subtitle="These numbers set your daily target. Update them whenever your body or routine changes."
+        title={hasProfile ? "Your goals" : "Set your goals"}
+        subtitle={
+          hasProfile
+            ? "These numbers set your daily target. Update them whenever your body or routine changes."
+            : "A few details and NutriPilot works out the calories and macros that fit you."
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         <div className="grid gap-4">
           <Card className="p-5 sm:p-6">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">About you</h2>
-                <p className="mt-1 text-[13px] text-ink-muted">
-                  Used to estimate the energy your body needs at rest.
-                </p>
-              </div>
-              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-                <Ruler size={17} />
-              </span>
-            </div>
+            <SectionHeading
+              icon={<Ruler size={17} />}
+              title="About you"
+              detail="Used to estimate the energy your body needs at rest."
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Name">
+              <Field label="Name (optional)">
                 <input
                   className={inputClass}
-                  value={draft.name}
+                  value={form.name}
                   onChange={(event) => set("name", event.target.value)}
                   placeholder="Alex"
                 />
@@ -88,17 +138,18 @@ export function GoalsPage() {
                   max="120"
                   inputMode="numeric"
                   className={inputClass}
-                  value={draft.age}
-                  onChange={(event) => set("age", Number(event.target.value))}
+                  value={form.age}
+                  onChange={(event) => set("age", event.target.value)}
+                  placeholder="30"
                 />
               </Field>
               <Field
                 label="Sex used for calculation"
-                hint="The BMR equation needs this; it does not change anything else."
+                hint="The equation needs this; it changes nothing else."
               >
                 <select
                   className={inputClass}
-                  value={draft.calculationSex}
+                  value={form.calculationSex}
                   onChange={(event) =>
                     set("calculationSex", event.target.value as UserProfile["calculationSex"])
                   }
@@ -114,8 +165,9 @@ export function GoalsPage() {
                   max="250"
                   inputMode="numeric"
                   className={inputClass}
-                  value={draft.heightCm}
-                  onChange={(event) => set("heightCm", Number(event.target.value))}
+                  value={form.heightCm}
+                  onChange={(event) => set("heightCm", event.target.value)}
+                  placeholder="175"
                 />
               </Field>
               <Field label="Current weight (kg)">
@@ -126,8 +178,9 @@ export function GoalsPage() {
                   step="0.1"
                   inputMode="decimal"
                   className={inputClass}
-                  value={draft.weightKg}
-                  onChange={(event) => set("weightKg", Number(event.target.value))}
+                  value={form.weightKg}
+                  onChange={(event) => set("weightKg", event.target.value)}
+                  placeholder="72"
                 />
               </Field>
               <Field label="Target weight (kg)">
@@ -138,74 +191,52 @@ export function GoalsPage() {
                   step="0.1"
                   inputMode="decimal"
                   className={inputClass}
-                  value={draft.targetWeightKg}
-                  onChange={(event) => set("targetWeightKg", Number(event.target.value))}
+                  value={form.targetWeightKg}
+                  onChange={(event) => set("targetWeightKg", event.target.value)}
+                  placeholder="68"
                 />
               </Field>
             </div>
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">Activity and goal</h2>
-                <p className="mt-1 text-[13px] text-ink-muted">
-                  Be honest about activity — overestimating is the usual reason targets feel wrong.
-                </p>
-              </div>
-              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-                <Target size={17} />
-              </span>
-            </div>
+            <SectionHeading
+              icon={<Target size={17} />}
+              title="Activity and goal"
+              detail="Be honest about activity — overestimating is the usual reason targets feel wrong."
+            />
 
-            <Field label="How active are you?">
-              <select
-                className={inputClass}
-                value={draft.activityLevel}
-                onChange={(event) => set("activityLevel", event.target.value as ActivityLevel)}
-              >
+            <fieldset>
+              <legend className="mb-2 text-xs font-medium text-ink-muted">
+                How much do you exercise each week?
+              </legend>
+              <div className="grid gap-2 sm:grid-cols-2">
                 {ACTIVITY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                  <ChoiceCard
+                    key={option.value}
+                    active={form.activityLevel === option.value}
+                    label={option.label}
+                    detail={option.detail}
+                    onClick={() => set("activityLevel", option.value)}
+                  />
                 ))}
-              </select>
-            </Field>
+              </div>
+            </fieldset>
 
-            <fieldset className="mt-4">
+            <fieldset className="mt-5">
               <legend className="mb-2 text-xs font-medium text-ink-muted">
                 What do you want to do?
               </legend>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {GOAL_OPTIONS.map((option) => {
-                  const active = draft.goalMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => set("goalMode", option.value)}
-                      className={cx(
-                        "flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors",
-                        active
-                          ? "border-brand bg-brand-soft"
-                          : "border-line bg-surface hover:border-brand/40",
-                      )}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={cx(
-                          "mt-0.5 size-3.5 shrink-0 rounded-full border-2 transition-colors",
-                          active ? "border-[5px] border-brand" : "border-ink-faint",
-                        )}
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-medium">{option.label}</span>
-                        <span className="block text-[11px] text-ink-muted">{option.detail}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+                {GOAL_OPTIONS.map((option) => (
+                  <ChoiceCard
+                    key={option.value}
+                    active={form.goalMode === option.value}
+                    label={option.label}
+                    detail={option.detail}
+                    onClick={() => set("goalMode", option.value)}
+                  />
+                ))}
               </div>
             </fieldset>
           </Card>
@@ -213,20 +244,32 @@ export function GoalsPage() {
 
         <Card className="p-5 lg:sticky lg:top-24">
           <h2 className="text-sm font-medium text-ink-muted">Your daily target</h2>
-          <p className="mt-3 text-4xl font-semibold tabular-nums">{targets.calories}</p>
-          <p className="text-[13px] text-ink-muted">kcal per day</p>
 
-          <dl className="mt-5 border-t border-line-soft">
-            <TargetRow label="Protein" value={`${targets.protein}g`} colour="var(--color-brand)" />
-            <TargetRow label="Carbs" value={`${targets.carbs}g`} colour="var(--color-lime)" />
-            <TargetRow label="Fat" value={`${targets.fat}g`} colour="#e5a663" />
-            <TargetRow label="Fibre" value={`${targets.fibre}g`} colour="#8fa9d8" />
-          </dl>
+          {targets ? (
+            <>
+              <p className="mt-3 text-4xl font-semibold tabular-nums">{targets.calories}</p>
+              <p className="text-[13px] text-ink-muted">kcal per day</p>
 
-          <p className="mt-4 text-[11px] leading-relaxed text-ink-faint">
-            Calculated with the Mifflin&ndash;St Jeor equation and your activity level. It is a
-            starting point — adjust after two weeks of real data.
-          </p>
+              <dl className="mt-5 border-t border-line-soft">
+                <TargetRow label="Protein" value={`${targets.protein}g`} colour="var(--color-brand)" />
+                <TargetRow label="Carbs" value={`${targets.carbs}g`} colour="var(--color-lime)" />
+                <TargetRow label="Fat" value={`${targets.fat}g`} colour="#e5a663" />
+                <TargetRow label="Fibre" value={`${targets.fibre}g`} colour="#8fa9d8" />
+              </dl>
+
+              <p className="mt-4 text-[11px] leading-relaxed text-ink-faint">
+                Calculated with the Mifflin&ndash;St Jeor equation and your activity level. It is a
+                starting point — adjust after two weeks of real data.
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
+              Fill in the fields on the left and your personalised target appears here.
+              {missing.length > 0 && (
+                <span className="mt-2 block text-ink-faint">Still needed: {missing.join(", ")}.</span>
+              )}
+            </p>
+          )}
 
           {error && (
             <Alert tone="error" className="mt-3">
@@ -240,10 +283,10 @@ export function GoalsPage() {
             full
             className="mt-4"
             onClick={() => void save()}
-            disabled={busy}
+            disabled={busy || !complete}
           >
             {saved ? <Check size={17} /> : null}
-            {saved ? "Saved" : busy ? "Saving…" : "Save goals"}
+            {saved ? "Saved" : busy ? "Saving…" : hasProfile ? "Save goals" : "Save my goals"}
           </Button>
         </Card>
       </div>
@@ -251,24 +294,101 @@ export function GoalsPage() {
   );
 }
 
-function TargetRow({
-  label,
-  value,
-  colour,
+function SectionHeading({
+  icon,
+  title,
+  detail,
 }: {
-  label: string;
-  value: string;
-  colour: string;
+  icon: ReactNode;
+  title: string;
+  detail: string;
 }) {
   return (
-    <div className="flex min-h-11 items-center gap-2.5 border-b border-line-soft">
+    <div className="mb-4 flex items-start justify-between gap-4">
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+        <p className="mt-1 text-[13px] text-ink-muted">{detail}</p>
+      </div>
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+        {icon}
+      </span>
+    </div>
+  );
+}
+
+function ChoiceCard({
+  active,
+  label,
+  detail,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cx(
+        "flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors",
+        active ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-brand/40",
+      )}
+    >
       <span
         aria-hidden="true"
-        className="size-2 shrink-0 rounded-full"
-        style={{ background: colour }}
+        className={cx(
+          "mt-0.5 size-3.5 shrink-0 rounded-full border-2 transition-all",
+          active ? "border-[5px] border-brand" : "border-ink-faint",
+        )}
       />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium">{label}</span>
+        <span className="block text-[11px] text-ink-muted">{detail}</span>
+      </span>
+    </button>
+  );
+}
+
+function TargetRow({ label, value, colour }: { label: string; value: string; colour: string }) {
+  return (
+    <div className="flex min-h-11 items-center gap-2.5 border-b border-line-soft">
+      <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: colour }} />
       <dt className="flex-1 text-[13px] text-ink-muted">{label}</dt>
       <dd className="text-[13px] font-medium tabular-nums">{value}</dd>
     </div>
   );
+}
+
+function requiredMissing(form: FormState): string[] {
+  const missing: string[] = [];
+  if (!inRange(form.age, 13, 120)) missing.push("age");
+  if (!inRange(form.heightCm, 100, 250)) missing.push("height");
+  if (!inRange(form.weightKg, 30, 400)) missing.push("current weight");
+  if (!inRange(form.targetWeightKg, 30, 400)) missing.push("target weight");
+  if (!form.activityLevel) missing.push("activity level");
+  if (!form.goalMode) missing.push("goal");
+  return missing;
+}
+
+function inRange(value: string, min: number, max: number): boolean {
+  const number = Number(value);
+  return value.trim() !== "" && Number.isFinite(number) && number >= min && number <= max;
+}
+
+function toProfile(form: FormState, theme: UserProfile["theme"]): UserProfile {
+  return {
+    name: form.name.trim(),
+    age: Number(form.age),
+    calculationSex: form.calculationSex,
+    heightCm: Number(form.heightCm),
+    weightKg: Number(form.weightKg),
+    targetWeightKg: Number(form.targetWeightKg),
+    activityLevel: (form.activityLevel || "moderate") as ActivityLevel,
+    goalMode: (form.goalMode || "maintain") as GoalMode,
+    theme,
+    onboarded: true,
+  };
 }

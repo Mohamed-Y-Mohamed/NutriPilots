@@ -8,7 +8,6 @@ import { CoachPage } from "./pages/CoachPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { GoalsPage } from "./pages/GoalsPage";
-import { LibraryPage } from "./pages/LibraryPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipesPage } from "./pages/RecipesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -69,7 +68,6 @@ export function App() {
         <Route path="diary" element={<DiaryPage />} />
         <Route path="recipes" element={<RecipesPage />} />
         <Route path="recipes/:recipeId" element={<RecipeDetailPage />} />
-        <Route path="library" element={<LibraryPage />} />
         <Route path="coach" element={<CoachPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="settings" element={<SettingsPage />} />

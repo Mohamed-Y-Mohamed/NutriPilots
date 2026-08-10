@@ -35,9 +35,7 @@
 
     <!-- Meal photos: taken with the camera or chosen from the gallery. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <!-- A device without a camera can still choose a photo from the gallery. -->

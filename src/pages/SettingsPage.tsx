@@ -328,7 +328,7 @@ function DataRow({
  * button that can be hit by accident.
  */
 function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
-  const { signOut } = useAuth();
+  const { signOutLocal } = useAuth();
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -341,7 +341,9 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       await deleteAccount();
-      await signOut();
+      // The account is gone, so the session token now refers to nobody. A
+      // normal sign-out would fail against the server; clear it locally.
+      await signOutLocal();
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Could not delete the account. Please try again.",

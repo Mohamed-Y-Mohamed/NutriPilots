@@ -1,5 +1,4 @@
 import {
-  BookOpen,
   Bot,
   ChartNoAxesColumnIncreasing,
   CookingPot,
@@ -13,7 +12,7 @@ import { Brand } from "./Logo";
 import { cx } from "./ui";
 
 /**
- * Five destinations, always at the bottom, at every screen size. Keeping the
+ * Four destinations, always at the bottom, at every screen size. Keeping the
  * bar in one place means a user never has to learn a second navigation model
  * when they move between phone and desktop.
  */
@@ -21,7 +20,6 @@ const NAVIGATION = [
   { to: "/", label: "Today", icon: Gauge },
   { to: "/diary", label: "Add food", icon: Plus },
   { to: "/recipes", label: "Recipes", icon: CookingPot },
-  { to: "/library", label: "Library", icon: BookOpen },
   { to: "/coach", label: "Coach", icon: Bot },
 ] as const;
 
@@ -69,7 +67,7 @@ export function AppShell() {
         aria-label="Main"
         className="h-tabbar pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/85 backdrop-blur-md"
       >
-        <div className="mx-auto grid h-17 max-w-md grid-cols-5 px-1 pt-1.5">
+        <div className="mx-auto grid h-17 max-w-md grid-cols-4 px-1 pt-1.5">
           {NAVIGATION.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

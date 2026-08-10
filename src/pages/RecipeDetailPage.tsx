@@ -19,7 +19,7 @@ import {
   FoodImage,
   inputClass,
   Page,
-  Spinner,
+  Skeleton,
 } from "../components/ui";
 import { intensityFromOverrides, scaleRecipeNutrition } from "../lib/nutrition";
 import { getRecipe } from "../services/foodSearch";
@@ -57,8 +57,17 @@ export function RecipeDetailPage() {
 
   if (loading) {
     return (
-      <Page>
-        <Spinner label="Loading recipe…" />
+      <Page className="max-w-6xl">
+        <div role="status" aria-label="Loading recipe" className="grid gap-5">
+          <Skeleton className="h-80 rounded-3xl" />
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="grid gap-5">
+              <Skeleton className="h-64 rounded-2xl" />
+              <Skeleton className="h-48 rounded-2xl" />
+            </div>
+            <Skeleton className="h-96 rounded-2xl" />
+          </div>
+        </div>
       </Page>
     );
   }
