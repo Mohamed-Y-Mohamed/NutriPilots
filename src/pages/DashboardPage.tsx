@@ -286,14 +286,14 @@ function GoalPrompt({ onStart }: { onStart: () => void }) {
           <Target size={22} />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold tracking-tight">Set your daily target</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Let&rsquo;s get you set up</h2>
           <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
-            Tell NutriPilot your height, weight, activity level and what you want to achieve, and
-            it will work out the calories and macros that actually fit you. It takes a minute.
+            Fill in your height, weight, how much you exercise and what you want to achieve, and
+            NutriPilot works out the calories and macros that fit you. It takes a minute.
           </p>
         </div>
         <Button variant="primary" size="lg" onClick={onStart} className="shrink-0">
-          Add my target goal <ArrowRight size={17} />
+          Let&rsquo;s start <ArrowRight size={17} />
         </Button>
       </div>
     </Card>

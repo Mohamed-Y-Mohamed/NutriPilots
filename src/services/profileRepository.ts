@@ -1,15 +1,20 @@
 import { requireSupabase } from "../lib/supabase";
 import type { UserProfile } from "../types";
 
+/**
+ * Everything zero and nothing chosen. A new account must not be shown numbers
+ * it never gave — an invented weight or a preselected goal reads as fact and
+ * quietly becomes the target the user is measured against.
+ */
 export const DEFAULT_PROFILE: UserProfile = {
   name: "",
-  age: 25,
-  calculationSex: "male",
-  heightCm: 178,
-  weightKg: 78,
-  targetWeightKg: 72,
-  activityLevel: "moderate",
-  goalMode: "lose",
+  age: 0,
+  calculationSex: "female",
+  heightCm: 0,
+  weightKg: 0,
+  targetWeightKg: 0,
+  activityLevel: "sedentary",
+  goalMode: "maintain",
   theme: "system",
   onboarded: false,
 };

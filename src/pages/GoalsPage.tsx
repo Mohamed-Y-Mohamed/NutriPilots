@@ -217,7 +217,11 @@ export function GoalsPage() {
                     active={form.activityLevel === option.value}
                     label={option.label}
                     detail={option.detail}
-                    onClick={() => set("activityLevel", option.value)}
+                    // Tapping the chosen one again clears it, so a mis-tap is
+                    // undoable rather than permanent.
+                    onClick={() =>
+                      set("activityLevel", form.activityLevel === option.value ? "" : option.value)
+                    }
                   />
                 ))}
               </div>
@@ -234,7 +238,9 @@ export function GoalsPage() {
                     active={form.goalMode === option.value}
                     label={option.label}
                     detail={option.detail}
-                    onClick={() => set("goalMode", option.value)}
+                    onClick={() =>
+                      set("goalMode", form.goalMode === option.value ? "" : option.value)
+                    }
                   />
                 ))}
               </div>

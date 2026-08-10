@@ -73,7 +73,9 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     setIsLoading(true);
     setError(null);
     try {
-      const [loadedProfile, entries] = await Promise.all([loadProfile(), loadDiary(date)]);
+      const [loadedProfile, entries] = await withClockSkewRetry(() =>
+        Promise.all([loadProfile(), loadDiary(date)]),
+      );
 
       if (loadedProfile?.onboarded) {
         setProfileState(loadedProfile);
@@ -192,6 +194,26 @@ export function AppDataProvider({ children }: PropsWithChildren) {
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
+}
+
+/**
+ * A freshly minted token can carry an `iat` a second or two ahead of the
+ * validating node's clock, which Postgres rejects with "JWT issued at future".
+ * It is a race that resolves itself, so it is waited out rather than shown to
+ * someone who has just signed up and can do nothing about it.
+ */
+async function withClockSkewRetry<T>(run: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      const isSkew = /issued at future|jwt.*(not yet valid|iat)/i.test(message);
+
+      if (!isSkew || attempt >= attempts - 1) throw reason;
+      await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+    }
+  }
 }
 
 export function useAppData(): AppDataValue {
