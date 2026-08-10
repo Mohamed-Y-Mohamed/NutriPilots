@@ -50,6 +50,10 @@ export function Button({
   variant = "secondary",
   size = "md",
   full = false,
+  // Without this a <button> inside a form defaults to submit, which reloads the
+  // whole app the first time an action button is pressed. Callers that really
+  // want a submit pass type="submit" explicitly.
+  type = "button",
   className,
   children,
   ...props
@@ -60,6 +64,7 @@ export function Button({
 }) {
   return (
     <button
+      type={type}
       {...props}
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-xl font-medium",

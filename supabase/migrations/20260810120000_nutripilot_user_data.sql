@@ -205,6 +205,12 @@ alter table public.diary_entries drop constraint if exists diary_entries_meal_ch
 alter table public.diary_entries add constraint diary_entries_meal_check
   check (meal in ('Breakfast','Lunch','Dinner','Snacks'));
 
+-- The table predates this migration with a unit check limited to g/ml, which
+-- rejects a recipe logged in servings or a photo estimate logged as one meal.
+alter table public.diary_entries drop constraint if exists diary_entries_unit_check;
+alter table public.diary_entries add constraint diary_entries_unit_check
+  check (unit in ('g','ml','serving','meal','item','portion'));
+
 alter table public.diary_entries drop constraint if exists diary_entries_amount_check;
 alter table public.diary_entries add constraint diary_entries_amount_check
   check (amount > 0 and calories >= 0 and protein >= 0 and carbs >= 0 and fat >= 0);
