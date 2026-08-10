@@ -447,7 +447,9 @@ function EstimateCard({
         fibre: estimate.fibre_g,
         date,
         source: "ai_photo",
-        notes: estimate.description || null,
+        notes: [estimate.description, (estimate.ingredients ?? []).join(", ")]
+          .filter(Boolean)
+          .join(" — ") || null,
       });
       onLogged();
     } catch (reason) {
@@ -467,6 +469,24 @@ function EstimateCard({
 
   return (
     <div className="animate-fade-in mt-3 border-t border-line pt-3">
+      {(estimate.ingredients?.length ?? 0) > 0 && (
+        <div className="mb-2.5">
+          <p className="mb-1 text-[11px] font-medium text-ink-muted">
+            Based on these ingredients
+          </p>
+          <ul className="grid gap-0.5 text-[11px] leading-relaxed text-ink-muted">
+            {estimate.ingredients!.map((item) => (
+              <li key={item} className="flex gap-1.5">
+                <span aria-hidden="true" className="text-ink-faint">
+                  &middot;
+                </span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <p className="mb-2 text-[11px] text-ink-muted">
         Check these before logging — edit anything that looks wrong.
       </p>
@@ -576,6 +596,7 @@ function toEstimate(suggestion: MealSuggestion): MealEstimate {
   return {
     dish_name: suggestion.name,
     description: "",
+    ingredients: suggestion.ingredients ?? [],
     calories: suggestion.calories,
     protein_g: suggestion.protein_g,
     carbs_g: suggestion.carbs_g,

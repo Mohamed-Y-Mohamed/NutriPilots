@@ -463,11 +463,12 @@ When your answer names one or more specific meals or foods with a calorie figure
 block to the very end of your reply, after all prose:
 
 <<<LOG
-[{"name":"Chicken and chickpea traybake","calories":520,"protein_g":42,"carbs_g":30,"fat_g":22,"fibre_g":6,"servings":1}]
+[{"name":"Chicken and chickpea traybake","ingredients":["200g chicken thighs","150g chickpeas","1 tbsp olive oil"],"calories":520,"protein_g":42,"carbs_g":30,"fat_g":22,"fibre_g":6,"servings":1}]
 LOG>>>
 
 Rules for the block:
 - Only include meals you actually named in the reply. Never invent extras.
+- "ingredients" lists what the calorie figure is based on, with amounts for one serving.
 - One entry per meal, at most four.
 - Every number is per one serving of that meal, and must be non-negative.
 - Omit the block entirely when your reply names no specific meal.
@@ -495,6 +496,7 @@ Respond with JSON only, in exactly this shape:
 {
   "dish_name": "short name of the meal",
   "description": "one sentence describing what is on the plate",
+  "ingredients": ["3 eggs", "400g chopped tomatoes", "1 tbsp olive oil"],
   "calories": number,
   "protein_g": number,
   "carbs_g": number,
@@ -505,8 +507,12 @@ Respond with JSON only, in exactly this shape:
   "is_food": true | false
 }
 
-If the photo does not contain food, set "is_food" to false, all numbers to 0, and explain in
-"summary". All numbers must be non-negative and internally consistent: protein and carbs at
+"ingredients" is the list your calorie figure is actually based on, with the amounts you assumed
+for this portion. Name what you can see, plus the cooking fat and sauces a dish like this normally
+contains. This is what the user checks your estimate against, so be specific about quantities.
+
+If the photo does not contain food, set "is_food" to false, all numbers to 0, use an empty
+ingredients list, and explain in "summary". All numbers must be non-negative and internally consistent: protein and carbs at
 4 kcal/g plus fat at 9 kcal/g should land within about 15% of your calorie figure.`;
 
 export const INGREDIENT_VERIFY_PROMPT =

@@ -190,6 +190,8 @@ export interface RecentFood {
 export interface MealEstimate {
   dish_name: string;
   description: string;
+  /** What the calorie figure is based on, with assumed amounts. */
+  ingredients?: string[];
   calories: number;
   protein_g: number;
   carbs_g: number;
@@ -232,6 +234,8 @@ export interface FoodReview {
 /** A meal the coach named in a reply, offered for logging. */
 export interface MealSuggestion {
   name: string;
+  /** What the calorie figure is based on, with amounts for one serving. */
+  ingredients?: string[];
   calories: number;
   protein_g: number;
   carbs_g: number;
