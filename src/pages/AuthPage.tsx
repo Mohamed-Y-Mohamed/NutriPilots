@@ -367,7 +367,11 @@ function ConfirmationNotice({
       <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
       <p className="text-sm leading-relaxed text-ink-muted">
         We sent a confirmation link to <span className="font-medium text-ink">{email}</span>. Open
-        it to activate your account, then come back and sign in.
+        it to verify your account, then return to the app and sign in.
+      </p>
+      <p className="text-[12px] leading-relaxed text-ink-faint">
+        Nothing arrived? Check your spam folder — the link expires, so request a new one if it has
+        been sitting a while.
       </p>
       <Button variant="primary" size="lg" full onClick={onSignIn}>
         I have confirmed — sign in

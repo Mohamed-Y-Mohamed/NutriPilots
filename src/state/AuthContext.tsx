@@ -7,6 +7,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { EMAIL_CONFIRMATION_URL, PASSWORD_RESET_URL } from "../lib/site";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 export interface SignUpOutcome {
@@ -79,7 +80,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { data, error } = await client.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { display_name: name.trim() } },
+          options: {
+            data: { display_name: name.trim() },
+            // Without this Supabase falls back to the Site URL, and inside the
+            // Capacitor shell that resolved to localhost — a link the user
+            // could never open on their phone.
+            emailRedirectTo: EMAIL_CONFIRMATION_URL,
+          },
         });
         if (error) throw new Error(friendlyAuthError(error.message));
 
@@ -90,7 +97,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       resetPassword: async (email) => {
         const client = requireClient();
-        const { error } = await client.auth.resetPasswordForEmail(email.trim());
+        const { error } = await client.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: PASSWORD_RESET_URL,
+        });
         if (error) throw new Error(friendlyAuthError(error.message));
       },
 
@@ -146,6 +155,15 @@ export function friendlyAuthError(message: string): string {
   }
   if (lower.includes("unable to validate email") || lower.includes("invalid email")) {
     return "That email address does not look right.";
+  }
+  if (lower.includes("error sending") || lower.includes("smtp")) {
+    return "We could not send the confirmation email. The mail service may be misconfigured — please try again shortly.";
+  }
+  if (lower.includes("redirect") || lower.includes("requested path is invalid")) {
+    return "Sign-up is misconfigured: this app's return address is not on Supabase's allowed redirect list.";
+  }
+  if (lower.includes("signups not allowed") || lower.includes("signup is disabled")) {
+    return "New sign-ups are currently disabled for this app.";
   }
   return message;
 }
