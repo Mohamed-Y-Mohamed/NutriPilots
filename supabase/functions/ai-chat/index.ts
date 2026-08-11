@@ -1,6 +1,8 @@
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { AiError, callAi, parseJsonLoose } from "../_shared/ai.ts";
 import { chatSystemPrompt, PHOTO_SYSTEM_PROMPT } from "../_shared/prompts.ts";
+import { ingredientList, round, text } from "../_shared/coerce.ts";
+import { splitSuggestions } from "../_shared/suggestions.ts";
 import { json, preflight } from "../_shared/cors.ts";
 import { FUNCTION_BUILD } from "../_shared/version.ts";
 import { requireUser, userClient } from "../_shared/supabase.ts";
@@ -136,48 +138,6 @@ async function handleChat(
   });
 }
 
-/**
- * Pulls the machine-readable meal block off the end of a reply. The user sees
- * prose; the app gets something it can write to the diary. A malformed block is
- * dropped rather than shown, because a stray bracket in the chat would be worse
- * than a missing button.
- */
-export function splitSuggestions(raw: string): {
-  reply: string;
-  suggestions: Array<Record<string, unknown>>;
-} {
-  const match = raw.match(/<<<LOG([\s\S]*?)LOG>>>/);
-  if (!match) return { reply: raw.trim(), suggestions: [] };
-
-  const reply = raw.replace(match[0], "").trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[1].trim());
-  } catch {
-    return { reply, suggestions: [] };
-  }
-
-  if (!Array.isArray(parsed)) return { reply, suggestions: [] };
-
-  const suggestions = parsed
-    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-    .slice(0, 4)
-    .map((item) => ({
-      name: text(item.name, "Meal", 120),
-      ingredients: ingredientList(item.ingredients),
-      calories: round(item.calories, 0),
-      protein_g: round(item.protein_g, 1),
-      carbs_g: round(item.carbs_g, 1),
-      fat_g: round(item.fat_g, 1),
-      fibre_g: round(item.fibre_g, 1),
-      servings: round(item.servings ?? 1, 2) || 1,
-    }))
-    // A "meal" with no energy at all is not worth offering.
-    .filter((item) => item.calories > 0);
-
-  return { reply, suggestions };
-}
 
 // ---------------------------------------------------------------------------
 // Meal photo analysis
@@ -391,28 +351,6 @@ async function loadHistory(
 }
 
 // ---------------------------------------------------------------------------
-
-function round(value: unknown, decimals: number): number {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) return 0;
-  const factor = 10 ** decimals;
-  return Math.round(number * factor) / factor;
-}
-
-function text(value: unknown, fallback: string, max: number): string {
-  return typeof value === "string" && value.trim()
-    ? value.trim().slice(0, max)
-    : fallback;
-}
-
-/** What the calorie figure is based on, so the user can check the assumptions. */
-function ingredientList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    .map((item) => item.trim().slice(0, 120))
-    .slice(0, 20);
-}
 
 function confidence(value: unknown): "low" | "medium" | "high" {
   return value === "high" || value === "medium" ? value : "low";

@@ -57,6 +57,8 @@ Rules for the block:
 - One entry per meal, at most four.
 - Every number is per one serving of that meal, and must be non-negative.
 - Omit the block entirely when your reply names no specific meal.
+- If the user asks you to log, add, track or record a food, you MUST include the block for it.
+  Without it the app cannot show them the button, and your reply is useless to them.
 - Never mention the block, and never wrap it in code fences.
 - The block is an offer, not an action. Emitting it saves nothing, so your prose must not
   claim otherwise.`;

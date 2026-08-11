@@ -17,11 +17,56 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const functionsDir = join(root, "supabase", "functions");
 const outDir = join(root, "supabase", "manual", "functions");
 
-// Shared modules are inlined in dependency order.
-const SHARED_ORDER = ["cors.ts", "ai.ts", "prompts.ts", "supabase.ts"];
+const sharedDir = join(functionsDir, "_shared");
 
 const EXTERNAL_IMPORT = /^import\s[\s\S]*?from\s+["'](?:jsr:|npm:|https:)[^"']+["'];?$/gm;
-const SHARED_IMPORT = /^import\s[\s\S]*?from\s+["']\.\.\/_shared\/[^"']+["'];?$/gm;
+// Entries reach shared code as ../_shared/x.ts; shared modules reach each other
+// as ./x.ts. Both forms disappear once the module is inlined.
+const SHARED_IMPORT = /^import\s[\s\S]*?from\s+["'](?:\.\.\/_shared\/|\.\/)[^"']+["'];?$/gm;
+const SHARED_SPECIFIER = /from\s+["'](?:\.\.\/_shared\/|\.\/)([^"']+)["']/g;
+
+/**
+ * The shared modules a source file needs, deepest dependency first.
+ *
+ * Discovered by reading the imports rather than kept in a list here: a list
+ * goes stale the moment a shared module is added, and the failure is silent —
+ * the bundle simply omits the code and only breaks when someone pastes it into
+ * the dashboard. That is exactly how `version.ts` went missing.
+ */
+function collectShared(source, seen = new Set(), order = []) {
+  for (const [, dep] of source.matchAll(SHARED_SPECIFIER)) {
+    if (seen.has(dep)) continue;
+    seen.add(dep);
+    collectShared(readFileSync(join(sharedDir, dep), "utf8"), seen, order);
+    order.push(dep);
+  }
+  return order;
+}
+
+/**
+ * Fails the build if the bundle uses something it never defines.
+ *
+ * Inlining is textual, so a missed module produces a file that looks fine and
+ * throws a ReferenceError only once deployed.
+ */
+function assertSelfContained(name, bundle, entry) {
+  const imported = [...entry.matchAll(/^import\s*\{([^}]+)\}\s*from\s+["'](?:\.\.\/_shared\/)/gm)]
+    .flatMap(([, names]) => names.split(","))
+    .map((part) => part.replace(/^\s*type\s+/, "").split(/\s+as\s+/).pop().trim())
+    .filter(Boolean);
+
+  const missing = imported.filter(
+    (symbol) =>
+      !new RegExp(`(?:function|const|let|class|type|interface|enum)\\s+${symbol}\\b`).test(bundle),
+  );
+
+  if (missing.length) {
+    throw new Error(
+      `${name}.ts would not run: ${missing.join(", ")} imported but never inlined. ` +
+        `Check supabase/functions/_shared/ imports resolve.`,
+    );
+  }
+}
 
 const targets = readdirSync(functionsDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
@@ -35,14 +80,10 @@ for (const name of targets) {
 
   const entry = readFileSync(join(functionsDir, name, "index.ts"), "utf8");
 
-  // Only inline the shared modules this function actually imports, so a small
-  // function does not carry the whole AI layer.
-  const needed = SHARED_ORDER.filter((shared) =>
-    new RegExp(`\\.\\./_shared/${shared.replace(".", "\\.")}`).test(entry),
-  );
-
-  for (const shared of needed) {
-    parts.push(strip(readFileSync(join(functionsDir, "_shared", shared), "utf8"), externals));
+  // Only the shared modules this function actually reaches, so a small function
+  // does not carry the whole AI layer.
+  for (const shared of collectShared(entry)) {
+    parts.push(strip(readFileSync(join(sharedDir, shared), "utf8"), externals));
   }
   parts.push(strip(entry, externals));
 
@@ -59,7 +100,10 @@ for (const name of targets) {
 `;
 
   const body = [header, [...externals].sort().join("\n"), "", ...parts].join("\n");
-  writeFileSync(join(outDir, `${name}.ts`), `${body.replace(/\n{4,}/g, "\n\n\n")}\n`);
+  const bundle = `${body.replace(/\n{4,}/g, "\n\n\n")}\n`;
+
+  assertSelfContained(name, bundle, entry);
+  writeFileSync(join(outDir, `${name}.ts`), bundle);
   console.log(`  ${name}.ts`);
 }
 
