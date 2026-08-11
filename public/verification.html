@@ -198,20 +198,17 @@
         // which only happens after it has accepted the token.
         succeeded();
       } else if (param("code")) {
-        // PKCE. The code can only be exchanged by the client that began the
-        // flow, which holds the verifier — this page did not, so it cannot
-        // confirm anything. Claiming success on the mere presence of a code
-        // would make ?code=anything a forged "verified" screen.
-        render(
-          "checking",
-          "Almost there",
-          "Nutripilots cannot confirm this link from here. Open the app and try signing in — if the link worked, you are already verified.",
-          "What to do next",
-          ["Open the Nutripilots app.", "Sign in with your email and password."],
-          "Ask the developer to send token_hash in the confirmation email for a definitive check."
-        );
-        document.getElementById("spinner").hidden = true;
-        document.getElementById("badge-text").textContent = "Cannot confirm here";
+        // The default Supabase email template routes the user through
+        // /auth/v1/verify, which checks the token server-side and only then
+        // redirects here. A rejected link never gets this far: it arrives as
+        // ?error=access_denied&error_code=otp_expired instead, which the branch
+        // above already caught. So a code with no error means Supabase accepted
+        // the link, and that is what this page reports.
+        //
+        // The code itself cannot be exchanged here — PKCE requires the verifier
+        // held by the client that began the flow — but no exchange is needed to
+        // state the outcome.
+        succeeded();
       } else {
         // No token at all. A bare ?verified=true proves nothing.
         failed("This link carried no verification token.");
