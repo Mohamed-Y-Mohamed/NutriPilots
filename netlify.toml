@@ -1,0 +1,8 @@
+# One project, two targets: this build output is what Netlify serves on the web
+# and what Capacitor packages into the Android app, so both always match.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"

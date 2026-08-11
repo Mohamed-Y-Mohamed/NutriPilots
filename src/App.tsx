@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { SplashScreen } from "./components/SplashScreen";
 import { applyStatusBarTheme, hideNativeSplash } from "./lib/native";
@@ -11,6 +11,7 @@ import { GoalsPage } from "./pages/GoalsPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipesPage } from "./pages/RecipesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { VerifyPage } from "./pages/VerifyPage";
 import { useAuth } from "./state/AuthContext";
 import { useTheme } from "./state/ThemeContext";
 
@@ -18,9 +19,13 @@ import { useTheme } from "./state/ThemeContext";
 const MINIMUM_SPLASH_MS = 1100;
 const FADE_MS = 320;
 
+/** Both spellings resolve to the same page; see the route comment below. */
+const VERIFY_PATHS = ["/verification", "/verification.html"];
+
 export function App() {
   const { isLoading, user, justSignedUp, isRecovering } = useAuth();
   const { resolved } = useTheme();
+  const { pathname } = useLocation();
   const [splashState, setSplashState] = useState<"visible" | "leaving" | "gone">("visible");
 
   useEffect(() => {
@@ -45,6 +50,14 @@ export function App() {
     const timer = window.setTimeout(() => setSplashState("gone"), FADE_MS);
     return () => window.clearTimeout(timer);
   }, [splashState]);
+
+  // Arriving from a confirmation email means waiting on an answer, so this
+  // route skips the splash and the auth gate entirely. `.html` is matched too
+  // because that is the address already in sent emails and in Supabase's
+  // redirect allow-list.
+  if (VERIFY_PATHS.includes(pathname)) {
+    return <VerifyPage />;
+  }
 
   if (splashState !== "gone") {
     return <SplashScreen leaving={splashState === "leaving"} />;

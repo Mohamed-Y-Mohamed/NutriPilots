@@ -23,6 +23,16 @@ export default tseslint.config(
     },
   },
 
+  // Plain browser scripts served as static files, outside the bundle.
+  {
+    files: ["public/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: "script",
+      globals: { ...globals.browser },
+    },
+  },
+
   // Build and deploy tooling runs on Node.
   {
     files: ["scripts/**/*.{js,mjs}", "*.config.{js,ts}", "e2e/**/*.ts"],

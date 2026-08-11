@@ -1,0 +1,4 @@
+# Static files win over this rule, so /verification.html is still served
+# directly. Everything else is handed to the single-page app so a refresh on
+# /goals or a shared /recipes/<id> link resolves instead of 404ing.
+/*    /index.html   200

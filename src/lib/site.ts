@@ -9,7 +9,13 @@
 export const SITE_URL =
   import.meta.env.VITE_SITE_URL?.replace(/\/$/, "") ?? "https://nutripilots.netlify.app";
 
-/** Landing page for the "confirm your email" link. */
+/**
+ * Landing page for the "confirm your email" link.
+ *
+ * A route inside the app, not a static file. The `.html` suffix is kept because
+ * it is already in sent emails and in Supabase's redirect allow-list; the
+ * router matches it and `/verification` alike.
+ */
 export const EMAIL_CONFIRMATION_URL = `${SITE_URL}/verification.html`;
 
 /**
