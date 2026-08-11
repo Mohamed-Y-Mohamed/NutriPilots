@@ -29,8 +29,8 @@ export const labelClass = "text-xs font-medium text-ink-muted";
 /* Button                                                                      */
 /* -------------------------------------------------------------------------- */
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "lime";
-type Size = "sm" | "md" | "lg";
+export type Variant = "primary" | "secondary" | "ghost" | "danger" | "lime";
+export type Size = "sm" | "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
   primary: "bg-brand text-white hover:bg-brand-strong",
@@ -45,6 +45,22 @@ const SIZES: Record<Size, string> = {
   md: "min-h-11 px-4 text-sm",
   lg: "min-h-12 px-5 text-[15px]",
 };
+
+export function buttonClass(
+  variant: Variant = "secondary",
+  size: Size = "md",
+  full = false,
+  className?: string,
+): string {
+  return cx(
+    "inline-flex items-center justify-center gap-2 rounded-xl font-medium",
+    "transition-colors active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100",
+    VARIANTS[variant],
+    SIZES[size],
+    full && "w-full",
+    className,
+  );
+}
 
 export function Button({
   variant = "secondary",
@@ -66,14 +82,7 @@ export function Button({
     <button
       type={type}
       {...props}
-      className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-medium",
-        "transition-colors active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100",
-        VARIANTS[variant],
-        SIZES[size],
-        full && "w-full",
-        className,
-      )}
+      className={buttonClass(variant, size, full, className)}
     >
       {children}
     </button>
@@ -347,7 +356,7 @@ export function IconButton({
       {...props}
       aria-label={label}
       className={cx(
-        "grid size-10 shrink-0 place-items-center rounded-lg text-ink-faint transition-colors",
+        "grid size-10 shrink-0 place-items-center rounded-lg text-ink-muted transition-colors",
         danger ? "hover:bg-danger-soft hover:text-danger" : "hover:bg-muted hover:text-ink",
         className,
       )}

@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("first run", () => {
   test("shows the olive splash, then lands on sign up", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/auth");
 
     const splash = page.getByRole("status", { name: "Loading NutriPilot" });
     await expect(splash).toBeVisible();
@@ -34,7 +34,7 @@ test.describe("first run", () => {
 
 test.describe("sign up validation", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/auth");
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
       timeout: 10_000,
     });
@@ -111,7 +111,7 @@ test.describe("sign up validation", () => {
 
 test.describe("accessibility basics", () => {
   test("exposes a working skip link and a labelled password toggle", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/auth");
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
       timeout: 10_000,
     });
@@ -125,7 +125,7 @@ test.describe("accessibility basics", () => {
 
   test("respects a dark colour scheme", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "dark" });
-    await page.goto("/");
+    await page.goto("/auth");
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
       timeout: 10_000,
     });

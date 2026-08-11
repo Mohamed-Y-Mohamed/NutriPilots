@@ -2,13 +2,15 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { SplashScreen } from "./components/SplashScreen";
-import { applyStatusBarTheme, hideNativeSplash } from "./lib/native";
+import { applyStatusBarTheme, hideNativeSplash, isNative } from "./lib/native";
+import { shouldShowLanding } from "./lib/routing";
 import { AuthPage } from "./pages/AuthPage";
 import { CoachPage } from "./pages/CoachPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DeleteAccountPage } from "./pages/DeleteAccountPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { GoalsPage } from "./pages/GoalsPage";
+import { LandingPage } from "./pages/LandingPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipesPage } from "./pages/RecipesPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -66,6 +68,13 @@ export function App() {
   const publicPage = PUBLIC_PAGES[pathname];
   if (publicPage) return publicPage();
 
+  // The web front door, shown signed in or out. Deliberately ahead of the
+  // splash: a marketing page that makes a first-time visitor wait on a logo has
+  // already lost them. See shouldShowLanding for why each condition is there.
+  if (shouldShowLanding({ isNative, pathname, isRecovering, justSignedUp })) {
+    return <LandingPage />;
+  }
+
   if (splashState !== "gone") {
     return <SplashScreen leaving={splashState === "leaving"} />;
   }
@@ -85,7 +94,7 @@ export function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<DashboardPage />} />
+        <Route path="today" element={<DashboardPage />} />
         <Route path="diary" element={<DiaryPage />} />
         <Route path="recipes" element={<RecipesPage />} />
         <Route path="recipes/:recipeId" element={<RecipeDetailPage />} />
@@ -93,7 +102,7 @@ export function App() {
         <Route path="goals" element={<GoalsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/today" replace />} />
     </Routes>
   );
 }

@@ -29,3 +29,9 @@ playwright-report/
 
 # Downloaded archive, not source.
 nutripilot.zip
+
+# Signing keystores. A leaked upload key lets anyone ship as you.
+nutripilots
+*.jks
+*.keystore
+keystore.properties

@@ -19,7 +19,7 @@ import { useAppData } from "../state/AppDataContext";
  * when they move between phone and desktop.
  */
 const NAVIGATION = [
-  { to: "/", label: "Today", icon: Gauge },
+  { to: "/today", label: "Today", icon: Gauge },
   { to: "/diary", label: "Add food", icon: Plus },
   { to: "/recipes", label: "Recipes", icon: CookingPot },
   { to: "/coach", label: "Coach", icon: Bot },
@@ -77,7 +77,6 @@ export function AppShell() {
             <NavLink
               key={to}
               to={to}
-              end={to === "/"}
               className={({ isActive }) =>
                 cx(
                   "group relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium",

@@ -33,7 +33,7 @@ async function completeSignUpForm(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await stubSignUp(page);
-  await page.goto("/");
+  await page.goto("/auth");
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
     timeout: 10_000,
   });
@@ -94,7 +94,7 @@ test.describe("with email confirmation enabled", () => {
         }),
       });
     });
-    await page.goto("/");
+    await page.goto("/auth");
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible({
       timeout: 10_000,
     });
