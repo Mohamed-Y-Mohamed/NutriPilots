@@ -30,6 +30,33 @@ export function VerifyPage() {
     };
   }, []);
 
+  /**
+   * Confirming an email must not sign anyone in.
+   *
+   * The client is configured with detectSessionInUrl, so on the browser that
+   * signed up it quietly trades the `?code=` in this URL for a real session.
+   * The page then said "verified" while the user was already logged in, and
+   * "Continue to sign in" dropped them straight into the app — no password ever
+   * entered, and the account left signed in on whatever device opened the link.
+   *
+   * The exchange is asynchronous and cannot be waited on from here, so this
+   * watches for a session appearing rather than clearing once and hoping.
+   * Local scope clears this browser's stored session without calling the
+   * server, so sessions on the user's other devices are untouched.
+   */
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+
+    void client.auth.signOut({ scope: "local" });
+
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      if (session) void client.auth.signOut({ scope: "local" });
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
+
   const verified = result?.outcome === "verified";
 
   return (
