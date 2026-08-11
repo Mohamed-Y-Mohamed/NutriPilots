@@ -1,3 +1,7 @@
+// Imported rather than referenced by URL so the bundler inlines it. Fetched
+// over the network it arrives at roughly the moment the splash starts fading,
+// which on the web left an empty square where the logo should be.
+import splashLogo from "../assets/splash-logo.png";
 import { cx } from "./ui";
 
 /**
@@ -15,7 +19,7 @@ export function SplashScreen({ leaving = false }: { leaving?: boolean }) {
       )}
     >
       <div className="animate-rise grid justify-items-center">
-        <img src="/logo-512.png" width={96} height={96} alt="" className="size-24 rounded-3xl" />
+        <img src={splashLogo} width={96} height={96} alt="" className="size-24 rounded-3xl" />
         <span className="mt-5 text-2xl font-semibold tracking-tight text-white">
           Nutri<span className="text-lime">Pilot</span>
         </span>

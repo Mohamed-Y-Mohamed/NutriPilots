@@ -16,9 +16,48 @@ export type VerificationOutcome = "verified" | "failed";
 
 export interface VerificationResult {
   outcome: VerificationOutcome;
-  /** Supabase's own wording, when it gave one. */
+  /**
+   * Our own wording, chosen from a fixed table. Never text taken from the URL.
+   */
   reason?: string;
 }
+
+/**
+ * Anyone can put anything in a query string and send the link to someone else.
+ * Rendering that text would let a stranger publish their own words on our
+ * domain — "call this number to restore your account" reads as official when it
+ * sits under our logo. React escapes markup, so this is not script injection,
+ * but it is still someone else writing our page.
+ *
+ * So the URL only ever selects a message; it never supplies one.
+ */
+const FAILURE_MESSAGES: Record<string, string> = {
+  otp_expired: "This link has expired. Request a new confirmation email and use the newest one.",
+  access_denied: "This link is no longer valid. It may have already been used.",
+  unauthorized_client: "This link is no longer valid. It may have already been used.",
+  validation_failed: "This link is incomplete. Open the most recent email and tap the link again.",
+};
+
+const GENERIC_FAILURE = "This link is invalid, expired, or has already been used.";
+
+/**
+ * Turns whatever a link claims into one of our own sentences. Supabase puts the
+ * specific cause in `error_code` and the broad one in `error`, so both are
+ * consulted, most specific first.
+ */
+function messageFor(...codes: Array<string | null>): string {
+  for (const code of codes) {
+    if (code && FAILURE_MESSAGES[code]) return FAILURE_MESSAGES[code];
+  }
+  return GENERIC_FAILURE;
+}
+
+/**
+ * Supabase rejects an unknown type, but sending one on unchecked would make the
+ * link's author a participant in the request we make. Only the types this app
+ * actually issues are passed through.
+ */
+const ALLOWED_TYPES = ["signup", "email", "email_change", "recovery", "invite", "magiclink"];
 
 /** The address the page was opened with, captured before it can be rewritten. */
 export const verificationHref = `${snapshot.search}${snapshot.hash}`;
@@ -46,16 +85,20 @@ export async function resolveVerification(
 ): Promise<VerificationResult> {
   const readParam = reader(href);
 
-  const error = readParam("error_description") ?? readParam("error");
-  if (error) {
-    // An explicit rejection is never dressed up as a success.
-    return { outcome: "failed", reason: decodeURIComponent(error).replace(/\+/g, " ") };
+  // An explicit rejection is never dressed up as a success. `error_description`
+  // is read only to detect that one is present — its text is discarded.
+  if (readParam("error") ?? readParam("error_description")) {
+    return { outcome: "failed", reason: messageFor(readParam("error_code"), readParam("error")) };
   }
 
   const tokenHash = readParam("token_hash");
   if (tokenHash) {
-    const type = readParam("type") ?? "email";
+    const requested = readParam("type") ?? "email";
+    const type = ALLOWED_TYPES.includes(requested) ? requested : "email";
+
     try {
+      // The host is our own constant, never the link's — a crafted `href`
+      // cannot redirect this call or the token to anywhere else.
       const response = await fetch(`${supabaseUrl}/auth/v1/verify`, {
         method: "POST",
         headers: { apikey: anonKey, "Content-Type": "application/json" },
@@ -64,9 +107,12 @@ export async function resolveVerification(
       const body = await response.json().catch(() => null);
 
       if (response.ok && body?.access_token) return { outcome: "verified" };
-      return { outcome: "failed", reason: body?.msg ?? "" };
+      return { outcome: "failed", reason: messageFor(body?.error_code ?? null) };
     } catch {
-      return { outcome: "failed", reason: "Could not reach NutriPilot. Check your connection." };
+      return {
+        outcome: "failed",
+        reason: "We could not reach NutriPilot. Check your connection and open the link again.",
+      };
     }
   }
 

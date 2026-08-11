@@ -10,6 +10,11 @@ export default defineConfig({
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   plugins: [react(), tailwindcss()],
   build: {
+    // The splash logo is the one image that cannot wait for the network: it is
+    // shown for about a second and then gone. Raising the limit past its size
+    // inlines it into the bundle as a data URI, so it paints with the splash
+    // instead of arriving after it. Nothing else in src/ imports an asset.
+    assetsInlineLimit: 12288,
     rollupOptions: {
       output: {
         manualChunks(id) {
