@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Form definitions</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <!--
+      Not a page anyone visits. Netlify discovers forms by parsing published
+      HTML, and the real form is rendered by React at runtime where Netlify
+      never sees it. This declares the fields at build time so submissions from
+      /delete-account are accepted and delivered.
+    -->
+    <form name="account-deletion" data-netlify="true" netlify-honeypot="company" hidden>
+      <input type="hidden" name="form-name" value="account-deletion" />
+      <input type="email" name="email" />
+      <textarea name="reason"></textarea>
+      <input name="company" />
+    </form>
+  </body>
+</html>

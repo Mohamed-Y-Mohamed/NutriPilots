@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { SplashScreen } from "./components/SplashScreen";
@@ -6,6 +6,7 @@ import { applyStatusBarTheme, hideNativeSplash } from "./lib/native";
 import { AuthPage } from "./pages/AuthPage";
 import { CoachPage } from "./pages/CoachPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DeleteAccountPage } from "./pages/DeleteAccountPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
@@ -19,8 +20,19 @@ import { useTheme } from "./state/ThemeContext";
 const MINIMUM_SPLASH_MS = 1100;
 const FADE_MS = 320;
 
-/** Both spellings resolve to the same page; see the route comment below. */
-const VERIFY_PATHS = ["/verification", "/verification.html"];
+/**
+ * Pages anyone can reach without an account, and without the splash.
+ *
+ * Someone arriving from a confirmation email wants an answer, not a logo. The
+ * deletion page has to be public because Google Play requires a deletion URL
+ * that works without signing in. `.html` spellings are matched because they are
+ * already in sent emails and in Supabase's redirect allow-list.
+ */
+const PUBLIC_PAGES: Record<string, () => ReactElement> = {
+  "/verification": () => <VerifyPage />,
+  "/verification.html": () => <VerifyPage />,
+  "/delete-account": () => <DeleteAccountPage />,
+};
 
 export function App() {
   const { isLoading, user, justSignedUp, isRecovering } = useAuth();
@@ -51,13 +63,8 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [splashState]);
 
-  // Arriving from a confirmation email means waiting on an answer, so this
-  // route skips the splash and the auth gate entirely. `.html` is matched too
-  // because that is the address already in sent emails and in Supabase's
-  // redirect allow-list.
-  if (VERIFY_PATHS.includes(pathname)) {
-    return <VerifyPage />;
-  }
+  const publicPage = PUBLIC_PAGES[pathname];
+  if (publicPage) return publicPage();
 
   if (splashState !== "gone") {
     return <SplashScreen leaving={splashState === "leaving"} />;
