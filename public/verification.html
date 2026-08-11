@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#071F18" />
-    <title>Email verified · NutriPilot</title>
+    <meta name="robots" content="noindex" />
+    <title>Nutripilots</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <style>
       :root {
@@ -22,13 +23,11 @@
         background: #071f18;
         -webkit-font-smoothing: antialiased;
       }
-      main {
-        width: min(26rem, 100%);
-        text-align: center;
-      }
-      img { width: 84px; height: 84px; margin: 0 auto; border-radius: 22px; display: block; }
-      h1 { margin: 24px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+      main { width: min(26rem, 100%); text-align: center; }
+      img.logo { width: 84px; height: 84px; margin: 0 auto; border-radius: 22px; display: block; }
+      h1 { margin: 22px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
       p { margin: 12px 0 0; font-size: 15px; line-height: 1.65; color: rgba(236, 239, 233, 0.62); }
+
       .badge {
         display: inline-flex;
         align-items: center;
@@ -36,13 +35,26 @@
         margin-top: 20px;
         padding: 8px 14px;
         border-radius: 999px;
-        background: rgba(53, 199, 154, 0.14);
-        color: #7fe7c6;
         font-size: 13px;
         font-weight: 600;
+        background: rgba(236, 239, 233, 0.08);
+        color: rgba(236, 239, 233, 0.7);
       }
+      .badge.ok { background: rgba(53, 199, 154, 0.14); color: #7fe7c6; }
+      .badge.bad { background: rgba(229, 120, 110, 0.16); color: #e5786e; }
+
+      .spinner {
+        width: 15px;
+        height: 15px;
+        border: 2px solid rgba(236, 239, 233, 0.25);
+        border-top-color: #7fe7c6;
+        border-radius: 50%;
+        animation: spin 700ms linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
       .steps {
-        margin-top: 28px;
+        margin-top: 26px;
         padding: 18px;
         text-align: left;
         border: 1px solid rgba(236, 239, 233, 0.1);
@@ -52,66 +64,158 @@
       .steps p { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: #ecefe9; }
       ol { margin: 0; padding-left: 18px; }
       li { font-size: 14px; line-height: 1.8; color: rgba(236, 239, 233, 0.62); }
-      a.button {
-        display: block;
-        margin-top: 20px;
-        padding: 14px;
-        border-radius: 14px;
-        background: #17966f;
-        color: #fff;
-        font-size: 15px;
-        font-weight: 600;
-        text-decoration: none;
-      }
+
       small { display: block; margin-top: 22px; font-size: 12px; color: rgba(236, 239, 233, 0.32); }
-      @media (prefers-reduced-motion: no-preference) {
-        main { animation: rise 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-        @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
-      }
+      [hidden] { display: none !important; }
+
+      @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 4s; } }
     </style>
   </head>
   <body>
     <main>
-      <img src="/logo-512.png" alt="" />
-      <span class="badge" id="badge">Email verified</span>
-      <h1 id="heading">You&rsquo;re all set</h1>
-      <p id="message">
-        Your email address has been confirmed. Head back to the NutriPilot app and sign in with
-        the password you chose.
-      </p>
+      <img class="logo" src="/logo-512.png" alt="" />
 
-      <div class="steps">
-        <p>What to do next</p>
-        <ol>
-          <li>Close this page.</li>
-          <li>Open the NutriPilot app.</li>
-          <li>Sign in with your email and password.</li>
-        </ol>
+      <span class="badge" id="badge" role="status" aria-live="polite">
+        <span class="spinner" id="spinner" aria-hidden="true"></span>
+        <span id="badge-text">Checking your link</span>
+      </span>
+
+      <h1 id="heading">Verifying your email</h1>
+      <p id="message">Checking your verification link&hellip;</p>
+
+      <div class="steps" id="steps" hidden>
+        <p id="steps-title">What to do next</p>
+        <ol id="steps-list"></ol>
       </div>
 
-      <a class="button" href="nutripilot://signin" id="open">Open NutriPilot</a>
-      <small>You can close this tab once you have signed in.</small>
+      <small id="detail"></small>
     </main>
 
     <script>
-      // Supabase appends its own result to the URL. A failed or expired link
-      // must not be dressed up as a success.
-      (function () {
-        var params = new URLSearchParams(
-          window.location.hash.slice(1) || window.location.search.slice(1)
-        );
-        var error = params.get("error_description") || params.get("error");
-        if (!error) return;
+      // The publishable (anon) key is designed to be public and already ships in
+      // the app bundle. The service-role key must never appear in a browser.
+      var SUPABASE_URL = "https://yhgkrbnmhgspgckvvfhe.supabase.co";
+      var SUPABASE_ANON_KEY = "sb_publishable_nN_8jw_J1FTuGtVIJ7KuQA_V5bY8yn6";
 
-        document.getElementById("badge").textContent = "Link not accepted";
-        document.getElementById("badge").style.background = "rgba(229, 120, 110, 0.16)";
-        document.getElementById("badge").style.color = "#e5786e";
-        document.getElementById("heading").textContent = "That link did not work";
-        document.getElementById("message").textContent =
-          decodeURIComponent(error).replace(/\+/g, " ") +
-          ". Confirmation links expire, so request a new one from the app and try again.";
-        document.getElementById("open").textContent = "Back to NutriPilot";
-      })();
+      var badge = document.getElementById("badge");
+      var badgeText = document.getElementById("badge-text");
+      var spinner = document.getElementById("spinner");
+      var heading = document.getElementById("heading");
+      var message = document.getElementById("message");
+      var steps = document.getElementById("steps");
+      var stepsTitle = document.getElementById("steps-title");
+      var stepsList = document.getElementById("steps-list");
+      var detail = document.getElementById("detail");
+
+      function render(state, title, text, listTitle, list, note) {
+        spinner.hidden = state !== "checking";
+        badge.className = "badge" + (state === "ok" ? " ok" : state === "bad" ? " bad" : "");
+        badgeText.textContent =
+          state === "ok" ? "Email verified" : state === "bad" ? "Not verified" : "Checking your link";
+        heading.textContent = title;
+        message.textContent = text;
+
+        stepsList.innerHTML = "";
+        if (list && list.length) {
+          stepsTitle.textContent = listTitle;
+          list.forEach(function (item) {
+            var li = document.createElement("li");
+            li.textContent = item;
+            stepsList.appendChild(li);
+          });
+          steps.hidden = false;
+        } else {
+          steps.hidden = true;
+        }
+
+        detail.textContent = note || "";
+      }
+
+      function succeeded() {
+        render(
+          "ok",
+          "You're all set",
+          "Your email address is confirmed. Open the Nutripilots app and sign in with the password you chose.",
+          "What to do next",
+          ["Close this page.", "Open the Nutripilots app.", "Sign in with your email and password."]
+        );
+      }
+
+      function failed(reason) {
+        render(
+          "bad",
+          "We could not verify your email",
+          "This link may be invalid, expired or already used. Please request a new verification email from Nutripilots.",
+          "If you already confirmed",
+          ["Open the Nutripilots app.", "Try signing in — the link may simply have been used already."],
+          reason || ""
+        );
+      }
+
+      // Supabase returns its result either in the query string or the fragment,
+      // depending on which template sent the user here. Read both.
+      var query = new URLSearchParams(window.location.search);
+      var fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      function param(name) {
+        return query.get(name) || fragment.get(name);
+      }
+
+      var error = param("error_description") || param("error");
+      var tokenHash = param("token_hash");
+      var type = param("type") || "email";
+
+      if (error) {
+        // An explicit rejection is never dressed up as a success.
+        failed(decodeURIComponent(error).replace(/\+/g, " "));
+      } else if (tokenHash) {
+        // The real check: hand the one-time token back to Supabase and believe
+        // only its answer. This is what supabase.auth.verifyOtp calls.
+        fetch(SUPABASE_URL + "/auth/v1/verify", {
+          method: "POST",
+          headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: type, token_hash: tokenHash })
+        })
+          .then(function (response) {
+            return response.json().then(function (body) {
+              return { ok: response.ok, body: body };
+            });
+          })
+          .then(function (result) {
+            if (result.ok && result.body && result.body.access_token) succeeded();
+            else failed(result.body && result.body.msg ? result.body.msg : "");
+          })
+          .catch(function () {
+            render(
+              "bad",
+              "We could not reach Nutripilots",
+              "Check your connection and open this link again.",
+              null,
+              null
+            );
+          });
+      } else if (fragment.get("access_token")) {
+        // Supabase verified the link itself and redirected here with a session,
+        // which only happens after it has accepted the token.
+        succeeded();
+      } else if (param("code")) {
+        // PKCE. The code can only be exchanged by the client that began the
+        // flow, which holds the verifier — this page did not, so it cannot
+        // confirm anything. Claiming success on the mere presence of a code
+        // would make ?code=anything a forged "verified" screen.
+        render(
+          "checking",
+          "Almost there",
+          "Nutripilots cannot confirm this link from here. Open the app and try signing in — if the link worked, you are already verified.",
+          "What to do next",
+          ["Open the Nutripilots app.", "Sign in with your email and password."],
+          "Ask the developer to send token_hash in the confirmation email for a definitive check."
+        );
+        document.getElementById("spinner").hidden = true;
+        document.getElementById("badge-text").textContent = "Cannot confirm here";
+      } else {
+        // No token at all. A bare ?verified=true proves nothing.
+        failed("This link carried no verification token.");
+      }
     </script>
   </body>
 </html>
