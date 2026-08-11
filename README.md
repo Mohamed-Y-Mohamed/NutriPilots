@@ -1,7 +1,10 @@
 # NutriPilot
 
-A mobile-first nutrition app: food diary, recipe library, user-authored food library, and an
-AI coach that answers nutrition questions and estimates meals from photos.
+A mobile-first nutrition app: food diary, recipe browser, AI-verified user-authored foods, and
+an AI coach that answers nutrition questions and estimates meals from photos.
+
+**Try it: [nutripilots.netlify.app](https://nutripilots.netlify.app)** — runs in any browser, no
+install needed. The same build is what ships inside the Android app.
 
 React 19 · TypeScript · Vite 7 · Tailwind CSS 4 · Supabase · Capacitor 8 (Android)
 
@@ -25,30 +28,7 @@ account, permanently.
 
 ---
 
-## Architecture
-
-```
-Capacitor (Android)
-  └── React SPA
-        ├── state/       AuthContext · ThemeContext · AppDataContext
-        ├── services/    repositories — the only modules that touch Supabase
-        ├── pages/       route-level screens
-        └── components/  reusable UI
-              │
-              ▼
-        Supabase
-          ├── Postgres   reference tables (read-only) + per-user tables (RLS)
-          ├── Storage    meal-photos (private, one folder per user)
-          └── Edge Fns   ai-chat · submit-food · delete-account · purge-meal-photos
-                              │
-                              ▼
-                        AI boundary (server-side keys only)
-```
-
-Pages never import the Supabase client directly, and no AI vendor detail exists outside the
-Edge Functions. No API key other than the Supabase publishable key is ever shipped to a device.
-
-### The AI model chain
+## The AI model chain
 
 Requests walk a chain of models. Within a provider it steps down through that provider's models
 first, so one model running out of free quota costs a retry rather than the whole provider.
@@ -87,7 +67,7 @@ Reasoning models are a trap here: left alone, `qwen3.6-27b` spends its entire ou
 `reasoning_effort: "none"`, its output is stripped of thought tags defensively, and a response
 that is empty once stripped counts as a failure so the next model gets a turn.
 
-### Meal photo lifecycle
+## Meal photo lifecycle
 
 1. The client resizes to ≤1280px JPEG and uploads to `meal-photos/{user_id}/…`.
 2. `ai-chat` signs a short-lived URL and sends it to the model.
@@ -105,6 +85,28 @@ npm install
 cp .env.example .env        # add your Supabase URL + publishable key
 npm run dev
 ```
+
+### Deploying the web app
+
+Netlify builds from this repo — `netlify.toml` sets the build command and publish directory, so
+no configuration is needed in the dashboard. **No environment variables are required**: the
+Supabase URL and publishable key fall back to this project's public values, so a deploy with an
+empty environment still works. Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` or
+`VITE_SITE_URL` only to point a build at a different project.
+
+Never put an AI provider key here. Anything prefixed `VITE_` is compiled into the JavaScript
+every visitor downloads; those keys belong in Supabase function secrets.
+
+Two routes are public — they render before the splash and the auth gate, because whoever opens
+them may be signed out or on a different device:
+
+| Route | Purpose |
+| --- | --- |
+| `/verification` (and `/verification.html`) | Where Supabase's confirmation email lands. The `.html` spelling is kept because it is already in sent emails and in Supabase's redirect allow-list. |
+| `/delete-account` | The public deletion URL Google Play requires. Submits through Netlify Forms — after the first deploy, enable an email notification for the `account-deletion` form or requests are recorded but nobody is told. |
+
+Add `https://nutripilots.netlify.app/**` to Supabase → Authentication → URL Configuration →
+Redirect URLs, or the confirmation and password-reset links are refused.
 
 ### Provisioning Supabase
 
@@ -128,7 +130,7 @@ PURGE_SECRET=any-long-random-string
 3. Run it:
 
 ```bash
-npm run supabase:deploy        # migrations + secrets + all four functions
+npm run supabase:deploy        # migrations + secrets + all five functions
 npm run supabase:db            # migrations only
 npm run supabase:functions     # functions only
 ```

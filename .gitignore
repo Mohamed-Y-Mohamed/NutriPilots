@@ -26,3 +26,6 @@ supabase/manual/
 test-results/
 playwright-report/
 .playwright/
+
+# Downloaded archive, not source.
+nutripilot.zip
