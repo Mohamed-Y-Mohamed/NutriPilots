@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../components/ui";
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../lib/supabase";
+import { Alert, Button, Field, inputClass } from "../components/ui";
+import { EMAIL_CONFIRMATION_URL } from "../lib/site";
+import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from "../lib/supabase";
 import { resolveVerification, type VerificationResult } from "../lib/verification";
 
 /**
@@ -35,7 +36,7 @@ export function VerifyPage() {
     <main className="grid min-h-svh place-items-center bg-canvas px-6 py-10 text-ink">
       <div className="w-full max-w-sm text-center">
         <img
-          src="/logo-512.png"
+          src="/logo.png"
           alt=""
           className="mx-auto h-20 w-20 rounded-3xl ring-1 ring-line dark:ring-ink-faint"
           width={80}
@@ -94,9 +95,92 @@ export function VerifyPage() {
             {!verified && result.reason && (
               <p className="mt-5 text-xs text-ink-faint">{result.reason}</p>
             )}
+
+            {/* An expired link is the common failure, and the only useful reply
+                to it is another link. Asking the user to find the app, sign in
+                and hunt for a resend button is how accounts get abandoned. */}
+            {!verified && <ResendForm />}
           </>
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Sends a fresh confirmation link.
+ *
+ * The address is asked for rather than assumed: whoever opens a dead link has
+ * no session, and may be on a different device from the one that signed up.
+ *
+ * Supabase answers the same way whether or not the address has an account, and
+ * so does this — otherwise the form would report who is registered to anyone
+ * who typed an address in.
+ */
+function ResendForm() {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState("");
+
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+
+    setError("");
+    setState("sending");
+
+    const { error: sendError } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: { emailRedirectTo: EMAIL_CONFIRMATION_URL },
+    });
+
+    // A rate limit is the one failure worth naming: the fix is to wait, and
+    // without saying so the user just presses the button again.
+    if (sendError && /rate|limit|seconds|too many/i.test(sendError.message)) {
+      setError("Too many requests just now. Wait a minute, then try again.");
+      setState("idle");
+      return;
+    }
+
+    setState("sent");
+  }
+
+  if (state === "sent") {
+    return (
+      <Alert tone="success" className="mt-6 text-left">
+        If <span className="font-medium">{email.trim()}</span> needs confirming, a new link is on
+        its way. It replaces any earlier link, so use the newest email.
+      </Alert>
+    );
+  }
+
+  return (
+    <form onSubmit={send} className="mt-8 border-t border-line pt-6 text-left">
+      <Field label="Send a new link" hint="The email address you signed up with.">
+        <input
+          className={inputClass}
+          type="email"
+          name="email"
+          autoComplete="email"
+          inputMode="email"
+          maxLength={254}
+          placeholder="you@example.com"
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </Field>
+
+      {error && (
+        <Alert tone="error" className="mt-3">
+          {error}
+        </Alert>
+      )}
+
+      <Button variant="secondary" full className="mt-3" type="submit" disabled={state === "sending"}>
+        {state === "sending" ? "Sending…" : "Email me a new link"}
+      </Button>
+    </form>
   );
 }

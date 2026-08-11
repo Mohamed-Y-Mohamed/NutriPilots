@@ -42,7 +42,7 @@ export function DeleteAccountPage() {
       <div className="mx-auto grid w-full max-w-lg gap-5">
         <header className="text-center">
           <img
-            src="/logo-512.png"
+            src="/logo.png"
             alt=""
             className="mx-auto h-14 w-14 rounded-2xl ring-1 ring-line dark:ring-ink-faint"
             width={56}

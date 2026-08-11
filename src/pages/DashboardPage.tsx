@@ -83,7 +83,7 @@ export function DashboardPage() {
         <GoalPrompt onStart={() => navigate("/goals")} />
       ) : (
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="text-sm font-medium text-ink-muted">
               {isOver ? "Over your target" : "Energy left"}
@@ -102,7 +102,7 @@ export function DashboardPage() {
           </div>
         </Card>
 
-        <Card className="p-5 sm:p-6">
+        <Card className="min-w-0 p-5 sm:p-6">
           <h2 className="text-sm font-medium text-ink-muted">Macros</h2>
           <div className="mt-5 grid gap-4">
             <MacroBar label="Protein" value={totals.protein} target={targets.protein} colour="var(--color-brand)" />
@@ -220,9 +220,9 @@ function MealGroup({
   const calories = entries.reduce((sum, entry) => sum + entry.calories, 0);
 
   return (
-    <Card className="px-4 py-1 sm:px-5">
+    <Card className="min-w-0 px-4 py-1 sm:px-5">
       <div className="flex min-h-14 items-center justify-between gap-3">
-        <h3 className="flex items-baseline gap-2.5 text-sm font-semibold">
+        <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 text-sm font-semibold">
           {meal}
           {entries.length > 0 && (
             <span className="text-xs font-normal text-ink-muted">
@@ -232,7 +232,7 @@ function MealGroup({
         </h3>
         <button
           onClick={onAdd}
-          className="inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-brand hover:bg-brand-soft"
+          className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-brand hover:bg-brand-soft"
         >
           <Plus size={13} /> Add
         </button>
@@ -245,7 +245,7 @@ function MealGroup({
         >
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-medium">{entry.name}</p>
-            <p className="text-[11px] text-ink-muted">{describePortion(entry)}</p>
+            <p className="truncate text-[11px] text-ink-muted">{describePortion(entry)}</p>
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[13px] font-medium tabular-nums">
