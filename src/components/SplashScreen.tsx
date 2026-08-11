@@ -19,7 +19,7 @@ export function SplashScreen({ leaving = false }: { leaving?: boolean }) {
       )}
     >
       <div className="animate-rise grid justify-items-center">
-        <img src={splashLogo} width={96} height={96} alt="" className="size-24 rounded-3xl" />
+        <img src={splashLogo} width={96} height={96} alt="" className="size-24 rounded-3xl ring-1 ring-white/25" />
         <span className="mt-5 text-2xl font-semibold tracking-tight text-white">
           Nutri<span className="text-lime">Pilot</span>
         </span>

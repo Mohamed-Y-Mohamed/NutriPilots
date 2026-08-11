@@ -9,7 +9,7 @@ function LogoMark({ size = 28, className }: { size?: number; className?: string 
       height={size}
       alt=""
       style={{ width: size, height: size }}
-      className={cx("shrink-0 rounded-lg", className)}
+      className={cx("shrink-0 rounded-lg ring-1 ring-line dark:ring-ink-faint", className)}
     />
   );
 }

@@ -37,7 +37,7 @@ export function VerifyPage() {
         <img
           src="/logo-512.png"
           alt=""
-          className="mx-auto h-20 w-20 rounded-3xl"
+          className="mx-auto h-20 w-20 rounded-3xl ring-1 ring-line dark:ring-ink-faint"
           width={80}
           height={80}
         />

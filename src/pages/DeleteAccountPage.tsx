@@ -44,7 +44,7 @@ export function DeleteAccountPage() {
           <img
             src="/logo-512.png"
             alt=""
-            className="mx-auto h-14 w-14 rounded-2xl"
+            className="mx-auto h-14 w-14 rounded-2xl ring-1 ring-line dark:ring-ink-faint"
             width={56}
             height={56}
           />
