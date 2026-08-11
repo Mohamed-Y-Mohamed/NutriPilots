@@ -2,6 +2,8 @@ import {
   Bot,
   Database,
   FileText,
+  Info,
+  KeyRound,
   LogOut,
   Monitor,
   Moon,
@@ -10,12 +12,13 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { LegalSheet } from "../components/LegalSheet";
 import {
   Alert,
   Button,
   Card,
+  CollapsibleCard,
   cx,
   inputClass,
   labelClass,
@@ -28,6 +31,7 @@ import {
   clearMealPhotoRecords,
   deleteAccount,
 } from "../services/aiClient";
+import { assessPassword } from "../lib/validation";
 import { useAppData } from "../state/AppDataContext";
 import { useAuth } from "../state/AuthContext";
 import { useTheme } from "../state/ThemeContext";
@@ -41,6 +45,12 @@ const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; icon: typeof
 
 type PendingAction = "diary" | "chat" | "photos" | "health" | null;
 
+/**
+ * Every section collapses. Settings is a long list of things touched rarely,
+ * and showing all of it at once buries the two or three controls anyone came
+ * for. Signing out sits at the very bottom, below the destructive actions, so
+ * it is never the thing a thumb finds by accident.
+ */
 export function SettingsPage() {
   const { user, signOut } = useAuth();
   const { preference, setPreference } = useTheme();
@@ -52,6 +62,7 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // Recorded the last time the coach answered, so a half-finished hand-deploy
   // is visible here instead of showing up as mysteriously missing features.
@@ -93,10 +104,7 @@ export function SettingsPage() {
 
   return (
     <Page className="max-w-2xl">
-      <PageHeader
-        title="Settings"
-        subtitle="Appearance, your data, and your account."
-      />
+      <PageHeader title="Settings" subtitle="Appearance, your data, and your account." />
 
       {notice && (
         <Alert tone="success" className="mb-4">
@@ -109,15 +117,13 @@ export function SettingsPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4">
-        <Card className="p-5">
-          <SectionHead
-            icon={<Sun size={17} />}
-            title="Appearance"
-            description="System follows your phone's light and dark setting."
-          />
-
-          <fieldset className="mt-4">
+      <div className="grid gap-3">
+        <CollapsibleCard
+          icon={<Sun size={17} />}
+          title="Appearance"
+          description="System follows your phone's light and dark setting."
+        >
+          <fieldset>
             <legend className="sr-only">Theme</legend>
             <div className="grid grid-cols-3 gap-2">
               {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
@@ -142,17 +148,15 @@ export function SettingsPage() {
               })}
             </div>
           </fieldset>
-        </Card>
+        </CollapsibleCard>
 
-        <Card className="p-5">
-          <SectionHead
-            icon={<UserRound size={17} />}
-            title="Account"
-            description="Signed in with email and password."
-          />
-
+        <CollapsibleCard
+          icon={<UserRound size={17} />}
+          title="Account"
+          description={user?.email ?? "Signed in with email and password."}
+        >
           {user && (
-            <div className="mt-4 flex items-center gap-3 border-t border-line-soft pt-4">
+            <div className="flex items-center gap-3">
               <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-sm font-semibold text-white">
                 {(user.email?.[0] ?? "U").toUpperCase()}
               </span>
@@ -160,71 +164,73 @@ export function SettingsPage() {
                 <span className="block truncate text-[14px] font-medium">{user.email}</span>
                 <span className="block text-[12px] text-ink-muted">Signed in</span>
               </span>
-              <Button size="sm" onClick={() => void signOut()}>
-                <LogOut size={15} /> Sign out
-              </Button>
             </div>
           )}
-        </Card>
 
-        <Card className="p-5">
-          <SectionHead
-            icon={<Database size={17} />}
-            title="Your data"
-            description="Delete any part of your data. This cannot be undone."
-          />
-
-          <div className="mt-3">
-            <DataRow
-              label="Food diary"
-              detail={`${diary.length} item${diary.length === 1 ? "" : "s"} logged today`}
-              action="diary"
-              pending={pending}
-              busy={busy}
-              onArm={setPending}
-              onRun={run}
-            />
-            <DataRow
-              label="Coach conversation"
-              detail="Every message you have exchanged with the AI coach"
-              action="chat"
-              pending={pending}
-              busy={busy}
-              onArm={setPending}
-              onRun={run}
-            />
-            <DataRow
-              label="Meal photo records"
-              detail="The 30-day text record of analysed photos"
-              action="photos"
-              pending={pending}
-              busy={busy}
-              onArm={setPending}
-              onRun={run}
-            />
-            <DataRow
-              label="All health data"
-              detail="Body stats, goals and your entire diary"
-              action="health"
-              pending={pending}
-              busy={busy}
-              onArm={setPending}
-              onRun={run}
-            />
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line-soft pt-4">
+            <div className="min-w-0">
+              <p className="text-[14px] font-medium">Password</p>
+              <p className="text-[12px] text-ink-muted">Change the password you sign in with.</p>
+            </div>
+            <Button size="sm" onClick={() => setChangingPassword(true)}>
+              <KeyRound size={15} /> Change
+            </Button>
           </div>
-        </Card>
+        </CollapsibleCard>
 
-        <Card className="p-5">
-          <SectionHead
-            icon={<Bot size={17} />}
-            title="How the coach works"
-            description="What happens to your messages and photos."
+        <CollapsibleCard
+          icon={<Database size={17} />}
+          title="Your data"
+          description="Delete any part of your data. This cannot be undone."
+        >
+          <DataRow
+            label="Food diary"
+            detail={`${diary.length} item${diary.length === 1 ? "" : "s"} logged today`}
+            action="diary"
+            pending={pending}
+            busy={busy}
+            onArm={setPending}
+            onRun={run}
           />
-          <p className="mt-3 border-t border-line-soft pt-3 text-[13px] leading-relaxed text-ink-muted">
+          <DataRow
+            label="Coach conversation"
+            detail="Every message you have exchanged with the AI coach"
+            action="chat"
+            pending={pending}
+            busy={busy}
+            onArm={setPending}
+            onRun={run}
+          />
+          <DataRow
+            label="Meal photo records"
+            detail="The 30-day text record of analysed photos"
+            action="photos"
+            pending={pending}
+            busy={busy}
+            onArm={setPending}
+            onRun={run}
+          />
+          <DataRow
+            label="All health data"
+            detail="Body stats, goals and your entire diary"
+            action="health"
+            pending={pending}
+            busy={busy}
+            onArm={setPending}
+            onRun={run}
+          />
+        </CollapsibleCard>
+
+        <CollapsibleCard
+          icon={<Bot size={17} />}
+          title="How the coach works"
+          description="What happens to your messages and photos."
+        >
+          <p className="text-[13px] leading-relaxed text-ink-muted">
             Photos are uploaded only for the moment it takes to analyse them and are deleted
             immediately afterwards. A short text description is kept for 30 days so you can look
             back at what you logged, then removed automatically. Your API access is handled
-            entirely on the server — no keys ever reach this device.
+            entirely on the server &mdash; no keys ever reach this device.
           </p>
           <button
             onClick={() => setShowTerms(true)}
@@ -232,31 +238,58 @@ export function SettingsPage() {
           >
             <FileText size={15} /> Read the Terms of Use &amp; Privacy
           </button>
-        </Card>
+        </CollapsibleCard>
 
-        <Card className="border-danger/30 p-5">
-          <SectionHead
-            danger
-            icon={<ShieldAlert size={17} />}
-            title="Delete your account"
-            description="Removes your account and everything in it, permanently."
-          />
-          <Button
-            variant="danger"
-            className="mt-4"
-            full
-            onClick={() => setShowDeleteAccount(true)}
-          >
+        <CollapsibleCard
+          icon={<Info size={17} />}
+          title="About"
+          description="Which version of the app and coach you are running."
+        >
+          <dl className="grid gap-2 text-[13px]">
+            <div className="flex justify-between gap-3">
+              <dt className="text-ink-muted">App build</dt>
+              <dd className="font-medium tabular-nums">{__BUILD_ID__}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-ink-muted">Coach build</dt>
+              <dd className="truncate font-medium">
+                {functionBuild ?? "unknown — send the coach a message"}
+              </dd>
+            </div>
+          </dl>
+        </CollapsibleCard>
+
+        <CollapsibleCard
+          danger
+          icon={<ShieldAlert size={17} />}
+          title="Delete your account"
+          description="Removes your account and everything in it, permanently."
+        >
+          <Button variant="danger" full onClick={() => setShowDeleteAccount(true)}>
             <Trash2 size={16} /> Delete my account
           </Button>
+        </CollapsibleCard>
+
+        {/* Last on the page on purpose: below the destructive actions, where a
+            thumb reaching for something else cannot land on it. */}
+        <Card className="p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[15px] font-semibold tracking-tight">Sign out</p>
+              <p className="mt-0.5 text-[13px] text-ink-muted">
+                Your data stays exactly as it is.
+              </p>
+            </div>
+            <Button onClick={() => void signOut()}>
+              <LogOut size={16} /> Sign out
+            </Button>
+          </div>
         </Card>
       </div>
 
-      <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-faint">
-        App build {__BUILD_ID__}
-        <br />
-        Coach build {functionBuild ?? "unknown — send the coach a message"}
-      </p>
+      {changingPassword && (
+        <ChangePasswordSheet onClose={() => setChangingPassword(false)} />
+      )}
 
       {showDeleteAccount && (
         <DeleteAccountSheet onClose={() => setShowDeleteAccount(false)} />
@@ -266,76 +299,107 @@ export function SettingsPage() {
   );
 }
 
-function SectionHead({
-  icon,
-  title,
-  description,
-  danger = false,
-}: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  danger?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <span
-        className={cx(
-          "grid size-9 shrink-0 place-items-center rounded-xl",
-          danger ? "bg-danger-soft text-danger" : "bg-brand-soft text-brand",
-        )}
-      >
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{description}</p>
-      </div>
-    </div>
-  );
-}
+/** Already signed in, so this needs no email round trip. */
+function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
+  const { updatePassword } = useAuth();
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-function DataRow({
-  label,
-  detail,
-  action,
-  pending,
-  busy,
-  onArm,
-  onRun,
-}: {
-  label: string;
-  detail: string;
-  action: Exclude<PendingAction, null>;
-  pending: PendingAction;
-  busy: boolean;
-  onArm: (action: PendingAction) => void;
-  onRun: (action: Exclude<PendingAction, null>) => Promise<void>;
-}) {
-  const armed = pending === action;
+  const assessment = assessPassword(password);
+  const matches = confirmation.length > 0 && confirmation === password;
+  const ready = assessment.allRulesMet && matches;
+
+  const save = async () => {
+    if (!ready || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updatePassword(password);
+      setDone(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not update your password.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft py-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-medium">{label}</p>
-        <p className="text-[12px] text-ink-muted">{detail}</p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {armed && (
-          <Button size="sm" variant="ghost" onClick={() => onArm(null)} disabled={busy}>
-            Cancel
+    <Sheet
+      title="Change password"
+      description="You stay signed in here. Anywhere else will need the new password."
+      onClose={onClose}
+      footer={
+        done ? (
+          <Button variant="primary" size="lg" full onClick={onClose}>
+            Done
           </Button>
-        )}
-        <Button
-          size="sm"
-          variant={armed ? "danger" : "secondary"}
-          disabled={busy}
-          onClick={() => (armed ? void onRun(action) : onArm(action))}
-        >
-          {armed ? "Confirm delete" : "Delete"}
-        </Button>
-      </div>
-    </div>
+        ) : (
+          <>
+            {error && <Alert tone="error">{error}</Alert>}
+            <Button
+              variant="primary"
+              size="lg"
+              full
+              disabled={!ready || busy}
+              onClick={() => void save()}
+            >
+              {busy ? "Saving..." : "Save new password"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {done ? (
+        <Alert tone="success">Your password has been updated.</Alert>
+      ) : (
+        <div className="grid gap-4">
+          <label className="grid gap-1.5">
+            <span className={labelClass}>New password</span>
+            <input
+              type="password"
+              className={inputClass}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              autoFocus
+            />
+          </label>
+
+          {password.length > 0 && (
+            <div className="grid gap-1 text-[12px]">
+              {assessment.rules.map((rule) => (
+                <span
+                  key={rule.id}
+                  className={cx(
+                    "flex items-center gap-1.5",
+                    rule.met ? "text-ok" : "text-ink-faint",
+                  )}
+                >
+                  {rule.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <label className="grid gap-1.5">
+            <span className={labelClass}>Confirm new password</span>
+            <input
+              type="password"
+              className={cx(inputClass, confirmation.length > 0 && !matches && "border-danger")}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              autoComplete="new-password"
+            />
+            {confirmation.length > 0 && !matches && (
+              <span className="text-[11px] text-danger">Those two passwords do not match.</span>
+            )}
+          </label>
+        </div>
+      )}
+    </Sheet>
   );
 }
 
@@ -410,5 +474,50 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
         />
       </label>
     </Sheet>
+  );
+}
+
+/** One deletable slice of the user's data, armed before it will fire. */
+function DataRow({
+  label,
+  detail,
+  action,
+  pending,
+  busy,
+  onArm,
+  onRun,
+}: {
+  label: string;
+  detail: string;
+  action: Exclude<PendingAction, null>;
+  pending: PendingAction;
+  busy: boolean;
+  onArm: (action: PendingAction) => void;
+  onRun: (action: Exclude<PendingAction, null>) => Promise<void>;
+}) {
+  const armed = pending === action;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft py-3 last:border-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-medium">{label}</p>
+        <p className="text-[12px] text-ink-muted">{detail}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {armed && (
+          <Button size="sm" variant="ghost" onClick={() => onArm(null)} disabled={busy}>
+            Cancel
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant={armed ? "danger" : "secondary"}
+          disabled={busy}
+          onClick={() => (armed ? void onRun(action) : onArm(action))}
+        >
+          {armed ? "Confirm delete" : "Delete"}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -12,5 +12,11 @@ export const SITE_URL =
 /** Landing page for the "confirm your email" link. */
 export const EMAIL_CONFIRMATION_URL = `${SITE_URL}/verification.html`;
 
-/** Landing page for the "reset your password" link. */
-export const PASSWORD_RESET_URL = `${SITE_URL}/verification.html`;
+/**
+ * Landing page for the "reset your password" link.
+ *
+ * This is the app itself, not the static confirmation page: recovery hands back
+ * a short-lived session in the URL fragment, and only the running app can trade
+ * that for a new password.
+ */
+export const PASSWORD_RESET_URL = `${SITE_URL}/`;

@@ -19,7 +19,7 @@ const MINIMUM_SPLASH_MS = 1100;
 const FADE_MS = 320;
 
 export function App() {
-  const { isLoading, user } = useAuth();
+  const { isLoading, user, justSignedUp, isRecovering } = useAuth();
   const { resolved } = useTheme();
   const [splashState, setSplashState] = useState<"visible" | "leaving" | "gone">("visible");
 
@@ -51,8 +51,9 @@ export function App() {
   }
 
   // Signing up is the first thing a new person sees, and the only thing an
-  // unauthenticated person can reach.
-  if (!user) {
+  // unauthenticated person can reach. `justSignedUp` holds the screen while the
+  // "account created" confirmation is up, so the shell cannot cut across it.
+  if (!user || justSignedUp || isRecovering) {
     return (
       <Routes>
         <Route path="/auth" element={<AuthPage />} />

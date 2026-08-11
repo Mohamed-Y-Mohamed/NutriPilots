@@ -17,6 +17,17 @@ export interface SignUpOutcome {
 
 interface AuthContextValue {
   user: User | null;
+  /**
+   * True between creating an account and the user acknowledging it. Held here
+   * rather than in the page because signing up briefly produces a session, and
+   * the resulting re-render would unmount the page and lose the flag with it.
+   */
+  justSignedUp: boolean;
+  acknowledgeSignUp: () => void;
+  /** True while the user is here from a password-reset link. */
+  isRecovering: boolean;
+  /** Sets a new password for the signed-in or recovering user. */
+  updatePassword: (password: string) => Promise<void>;
   session: Session | null;
   isLoading: boolean;
   isConfigured: boolean;
@@ -37,6 +48,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured);
+  const [justSignedUp, setJustSignedUp] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -48,9 +61,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setIsLoading(false);
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       setIsLoading(false);
+
+      // Arriving from a reset link produces a real session, so without this the
+      // app would simply let them in and never ask for a new password.
+      if (event === "PASSWORD_RECOVERY") setIsRecovering(true);
     });
 
     return () => {
@@ -62,6 +79,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user: session?.user ?? null,
+      justSignedUp,
+      isRecovering,
+
+      updatePassword: async (password) => {
+        const client = requireClient();
+        const { error } = await client.auth.updateUser({ password });
+        if (error) throw new Error(friendlyAuthError(error.message));
+        setIsRecovering(false);
+      },
+
+      acknowledgeSignUp: () => {
+        setJustSignedUp(false);
+        // Sign-up always ends signed out. Clearing here too closes the window
+        // where dismissing the confirmation faster than the local sign-out
+        // settles would drop the user straight into the app.
+        setSession(null);
+      },
       session,
       isLoading,
       isConfigured: isSupabaseConfigured,
@@ -90,8 +124,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
         if (error) throw new Error(friendlyAuthError(error.message));
 
-        // This project has email confirmation enabled, so a successful sign-up
-        // returns a user with no session until the link is clicked.
+        // With email confirmation switched off Supabase signs the new account
+        // in straight away. The session is dropped here on purpose: the app
+        // shows a confirmation screen and asks for one explicit sign-in, which
+        // would be impossible if the shell had already taken over the screen.
+        // Cleared locally, so there is no network round trip and no chance of
+        // the just-created account being invalidated server-side.
+        if (data.session) {
+          // Set before the sign-out so the shell never gets a frame in which
+          // to take over the screen.
+          setJustSignedUp(true);
+          await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+          setSession(null);
+        }
+
         return { needsEmailConfirmation: !data.session };
       },
 
@@ -116,7 +162,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setSession(null);
       },
     }),
-    [session, isLoading],
+    [session, isLoading, justSignedUp, isRecovering],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -164,6 +210,12 @@ export function friendlyAuthError(message: string): string {
   }
   if (lower.includes("signups not allowed") || lower.includes("signup is disabled")) {
     return "New sign-ups are currently disabled for this app.";
+  }
+  if (lower.includes("same as the old") || lower.includes("should be different")) {
+    return "That is already your password. Please choose a different one.";
+  }
+  if (lower.includes("session") && lower.includes("missing")) {
+    return "That reset link has expired. Please request a new one.";
   }
   return message;
 }

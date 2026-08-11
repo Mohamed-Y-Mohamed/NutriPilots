@@ -1,4 +1,4 @@
-import { ImageOff, X } from "lucide-react";
+import { ChevronDown, ImageOff, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -571,4 +571,70 @@ export function useTypewriter(text: string, enabled: boolean): string {
   }, [text, enabled]);
 
   return shown;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Collapsible section                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A titled section that opens on demand. Settings is a long list of things a
+ * user touches rarely; showing all of it at once buries the two or three
+ * controls anyone actually came for.
+ */
+export function CollapsibleCard({
+  icon,
+  title,
+  description,
+  defaultOpen = false,
+  danger = false,
+  children,
+}: PropsWithChildren<{
+  icon: ReactNode;
+  title: string;
+  description: string;
+  defaultOpen?: boolean;
+  danger?: boolean;
+}>) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Card className={cx("overflow-hidden", danger && "border-danger/30")}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50 sm:p-5"
+      >
+        <span
+          className={cx(
+            "grid size-9 shrink-0 place-items-center rounded-xl",
+            danger ? "bg-danger-soft text-danger" : "bg-brand-soft text-brand",
+          )}
+        >
+          {icon}
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold tracking-tight">{title}</span>
+          <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-muted">
+            {description}
+          </span>
+        </span>
+
+        <ChevronDown
+          size={18}
+          aria-hidden="true"
+          className={cx(
+            "shrink-0 text-ink-faint transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open && (
+        <div className="animate-rise border-t border-line-soft p-4 sm:p-5">{children}</div>
+      )}
+    </Card>
+  );
 }

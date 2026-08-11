@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Camera,
   Check,
+  CheckCircle2,
   Eye,
   EyeOff,
   MailCheck,
@@ -9,7 +10,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { LegalSheet } from "../components/LegalSheet";
 import { Brand } from "../components/Logo";
 import { Alert, Button, cx, inputClass, labelClass } from "../components/ui";
@@ -48,7 +49,15 @@ export function AuthPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
-  const { signIn, signUp, resetPassword } = useAuth();
+  const {
+    signIn,
+    signUp,
+    resetPassword,
+    justSignedUp,
+    acknowledgeSignUp,
+    isRecovering,
+    updatePassword,
+  } = useAuth();
 
   const assessment = useMemo(() => assessPassword(password), [password]);
   const emailValid = isValidEmail(email);
@@ -98,7 +107,28 @@ export function AuthPage() {
 
       <div className="pt-safe pb-safe flex items-center justify-center px-5 py-10 sm:px-8">
         <div className="w-full max-w-sm">
-          {awaitingConfirmation ? (
+          {isRecovering ? (
+            <NewPasswordScreen
+              updatePassword={updatePassword}
+              onDone={() => {
+                setMode("signin");
+                setPassword("");
+                setNotice("Password updated. Sign in with your new password.");
+              }}
+            />
+          ) : justSignedUp ? (
+            <SignedUpNotice
+              onContinue={() => {
+                acknowledgeSignUp();
+                setMode("signin");
+                setPassword("");
+              }}
+              onBack={() => {
+                acknowledgeSignUp();
+                setMode("signup");
+              }}
+            />
+          ) : awaitingConfirmation ? (
             <ConfirmationNotice
               email={email}
               onSignIn={() => {
@@ -106,7 +136,10 @@ export function AuthPage() {
                 switchMode("signin");
                 setPassword("");
               }}
-              onChangeEmail={() => setAwaitingConfirmation(false)}
+              onChangeEmail={() => {
+                setAwaitingConfirmation(false);
+                setMode("signup");
+              }}
             />
           ) : (
             <>
@@ -346,6 +379,178 @@ export function AuthPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Shown once an account exists. It moves on by itself so nobody is left
+ * staring at a dead end, but the wait is skippable and reversible — a countdown
+ * that cannot be escaped is worse than no countdown at all.
+ */
+const REDIRECT_SECONDS = 5;
+
+/**
+ * Shown when the user arrives from a reset link. Recovery hands the app a real
+ * session, so this form is the only thing between them and the app — it has to
+ * take the whole screen rather than be a dismissible prompt.
+ */
+function NewPasswordScreen({
+  onDone,
+  updatePassword,
+}: {
+  onDone: () => void;
+  updatePassword: (password: string) => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const assessment = assessPassword(password);
+  const matches = confirmation.length > 0 && confirmation === password;
+  const ready = assessment.allRulesMet && matches;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!ready || busy) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await updatePassword(password);
+      onDone();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not update your password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight">Choose a new password</h1>
+      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+        You followed a reset link. Pick a new password and sign in with it.
+      </p>
+
+      <form className="mt-7 grid gap-4" onSubmit={submit} noValidate>
+        <label className="grid gap-1.5">
+          <span className={labelClass}>New password</span>
+          <span className="relative block">
+            <input
+              type={show ? "text" : "password"}
+              className={cx(inputClass, "pr-12")}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setShow((current) => !current)}
+              aria-label={show ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 grid w-11 place-items-center text-ink-faint hover:text-ink"
+            >
+              {show ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </span>
+        </label>
+
+        {password.length > 0 && (
+          <div className="grid gap-1 text-[12px]">
+            {assessment.rules.map((rule) => (
+              <span
+                key={rule.id}
+                className={cx("flex items-center gap-1.5", rule.met ? "text-ok" : "text-ink-faint")}
+              >
+                {rule.met ? <Check size={13} /> : <X size={13} />}
+                {rule.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <label className="grid gap-1.5">
+          <span className={labelClass}>Confirm new password</span>
+          <input
+            type={show ? "text" : "password"}
+            className={cx(inputClass, confirmation.length > 0 && !matches && "border-danger")}
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            autoComplete="new-password"
+          />
+          {confirmation.length > 0 && !matches && (
+            <span className="text-[11px] text-danger">Those two passwords do not match.</span>
+          )}
+        </label>
+
+        {error && <Alert tone="error">{error}</Alert>}
+
+        <Button type="submit" variant="primary" size="lg" full disabled={busy || !ready}>
+          {busy ? "Saving..." : "Save new password"}
+        </Button>
+      </form>
+    </>
+  );
+}
+
+function SignedUpNotice({
+  onContinue,
+  onBack,
+}: {
+  onContinue: () => void;
+  onBack: () => void;
+}) {
+  const [remaining, setRemaining] = useState(REDIRECT_SECONDS);
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      onContinue();
+      return;
+    }
+    const timer = window.setTimeout(() => setRemaining((current) => current - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [remaining, onContinue]);
+
+  const elapsed = ((REDIRECT_SECONDS - remaining) / REDIRECT_SECONDS) * 100;
+
+  return (
+    <div className="grid justify-items-center gap-4 text-center">
+      <span className="grid size-14 place-items-center rounded-2xl bg-ok-soft text-ok">
+        <CheckCircle2 size={28} />
+      </span>
+
+      <div role="status">
+        <h1 className="text-2xl font-semibold tracking-tight">Sign-up complete</h1>
+        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+          Your account is ready. Sign in with your email and password to get started.
+        </p>
+      </div>
+
+      <div className="w-full">
+        <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <span
+            className="block h-full rounded-full bg-brand transition-[width] duration-1000 ease-linear"
+            style={{ width: `${elapsed}%` }}
+          />
+        </div>
+        <p className="mt-2 text-[12px] text-ink-faint">
+          Taking you to sign in in {remaining}s
+        </p>
+      </div>
+
+      <Button variant="primary" size="lg" full onClick={onContinue}>
+        Continue to sign in
+      </Button>
+
+      <button
+        onClick={onBack}
+        className="inline-flex min-h-9 items-center gap-2 text-[13px] text-ink-muted hover:text-ink"
+      >
+        <ArrowLeft size={15} /> Back to sign up
+      </button>
     </div>
   );
 }
