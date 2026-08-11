@@ -1,4 +1,4 @@
-package com.nutripilot.app;
+package com.nutripilots.app;
 
 import com.getcapacitor.BridgeActivity;
 
