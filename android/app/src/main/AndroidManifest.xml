@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -33,10 +34,22 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Meal photos: taken with the camera or chosen from the gallery. -->
+    <!-- Meal photos are taken with the camera. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!--
+      Choosing an existing photo goes through the Android photo picker
+      (androidx PickVisualMedia), which hands back one image the user selected
+      and needs no permission at all. Google Play requires apps with a one-time
+      or infrequent need — one meal photo at a time — to use the picker rather
+      than request broad gallery access, so these are removed from the merged
+      manifest. Capacitor's camera plugin declares them for apps that call
+      chooseFromGallery or pickImages; NutriPilot calls neither.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
 
     <!-- A device without a camera can still choose a photo from the gallery. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
