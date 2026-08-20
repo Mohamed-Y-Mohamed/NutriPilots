@@ -336,9 +336,12 @@ test.describe("signed-in layout", () => {
         timeout: 15_000,
       });
 
-      // Quick add and the trends card both have to be there and behave.
-      await expect(page.getByRole("heading", { name: "Quick add" })).toBeVisible();
+      // The one food card and the trends card both have to be there and behave.
+      await expect(page.getByRole("heading", { name: "Your food today" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Your intake" })).toBeVisible();
+
+      // Today's food is shown once, not in a second section further down.
+      await expect(page.getByRole("button", { name: /^Remove Slow-roasted/ })).toHaveCount(1);
 
       await expectNoSidewaysScroll(page, `Today at ${size.width}px`);
       await expectNothingClipped(page, `Today at ${size.width}px`);
@@ -406,6 +409,24 @@ test.describe("signed-in layout", () => {
     await expect(hint).toHaveCount(0);
   });
 
+  test("the whole day is readable without changing the meal tab", async ({ page }) => {
+    await signIn(page);
+    await stubSupabase(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { name: "Your food today" })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // The fixture has breakfast and lunch. Both show, whichever tab is active.
+    await expect(page.getByText("Porridge")).toBeVisible();
+    await expect(page.getByText("Slow-roasted lamb shoulder", { exact: false })).toBeVisible();
+
+    // And each has the delete the removed section used to provide.
+    await expect(page.getByRole("button", { name: "Remove Porridge" })).toBeVisible();
+  });
+
   /**
    * Someone who has signed up and not filled anything in must be shown the
    * prompt, never a number. The formula on an empty profile returns the safety
@@ -426,7 +447,7 @@ test.describe("signed-in layout", () => {
     // Nothing that implies a target exists.
     await expect(page.getByText(/kcal left|kcal over/)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Your intake" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Quick add" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Your food today" })).toHaveCount(0);
 
     // Nor in Settings, which is where the invented figure used to appear.
     await page.goto("/settings");
@@ -447,6 +468,9 @@ test.describe("signed-in layout", () => {
     await page.setViewportSize({ width: 320, height: 568 });
 
     await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { name: "Your food today" })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText("Slow-roasted lamb shoulder", { exact: false })).toBeVisible({
       timeout: 15_000,
     });

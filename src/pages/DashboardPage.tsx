@@ -1,32 +1,30 @@
 import {
   ArrowRight,
-  Bot,
   ChevronLeft,
   ChevronRight,
   Plus,
   Target,
-  Trash2,
-  UtensilsCrossed,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Button,
   Card,
-  EmptyState,
   IconButton,
   MacroBar,
   Page,
   PageHeader,
-  Skeleton,
-  SkeletonBlock,
 } from "../components/ui";
+import { CoachBanner } from "../components/CoachBanner";
 import { IntakeTrends } from "../components/IntakeTrends";
 import { QuickAdd } from "../components/QuickAdd";
-import { ScrollingText } from "../components/ScrollingText";
 import { addDays, formatDayLabel, localDateKey } from "../lib/dates";
 import { useAppData } from "../state/AppDataContext";
-import { MEALS, type DiaryEntry, type MealName } from "../types";
+
+
+/** Marks that the photo-estimate hint has had its one showing. */
+const COACH_HINT_SEEN = "nutripilot.coachHintSeen";
 
 export function DashboardPage() {
   const {
@@ -37,11 +35,21 @@ export function DashboardPage() {
     totals,
     date,
     setDate,
-    isLoading,
     error,
-    removeDiaryEntry,
   } = useAppData();
   const navigate = useNavigate();
+
+  // First run only. Written the moment it is shown, so a reload settles it.
+  const [showCoachHint, setShowCoachHint] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(COACH_HINT_SEEN)) return;
+      localStorage.setItem(COACH_HINT_SEEN, "1");
+      setShowCoachHint(true);
+    } catch {
+      // Private browsing with storage blocked. Not worth a banner either way.
+    }
+  }, []);
 
   const remaining = targets.calories - totals.calories;
   const percent = Math.min(100, (totals.calories / Math.max(targets.calories, 1)) * 100);
@@ -123,54 +131,13 @@ export function DashboardPage() {
       </div>
       )}
 
-      <Link
-        to="/coach"
-        className="mt-4 flex items-center gap-4 rounded-2xl bg-olive px-5 py-4 transition-colors hover:bg-olive-deep"
-      >
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/10 text-lime">
-          <Bot size={20} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-white">Not sure what you just ate?</span>
-          <span className="block text-[13px] text-white/55">
-            Photograph the plate and the coach estimates it.
-          </span>
-        </span>
-        <ChevronRight size={18} className="shrink-0 text-white/40" />
-      </Link>
+      {/* Only for someone who cannot see it anywhere else. Once the goals are
+          set it lives inside the food card above, and a first-run hint that
+          repeated it would be the same banner twice on one screen. Shown once,
+          ever, because a permanent advert for a feature you have already found
+          is just something to scroll past. */}
+      {!hasProfile && showCoachHint && <CoachBanner className="mt-4" />}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold tracking-tight">
-        {formatDayLabel(date)}&rsquo;s food
-      </h2>
-
-      {isLoading ? (
-        <DiarySkeleton />
-      ) : diary.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<UtensilsCrossed size={20} />}
-            title="Nothing logged yet"
-            text="Search a food, pick a recipe, or photograph your meal — whichever is quickest."
-            action={
-              <Button variant="primary" onClick={() => navigate("/diary")}>
-                <Plus size={16} /> Add your first food
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          {MEALS.map((meal) => (
-            <MealGroup
-              key={meal}
-              meal={meal}
-              entries={diary.filter((entry) => entry.meal === meal)}
-              onRemove={removeDiaryEntry}
-              onAdd={() => navigate(`/diary?meal=${meal}`)}
-            />
-          ))}
-        </div>
-      )}
     </Page>
   );
 }
@@ -215,80 +182,6 @@ function CalorieRing({
   );
 }
 
-function MealGroup({
-  meal,
-  entries,
-  onRemove,
-  onAdd,
-}: {
-  meal: MealName;
-  entries: DiaryEntry[];
-  onRemove: (id: string) => Promise<void>;
-  onAdd: () => void;
-}) {
-  const calories = entries.reduce((sum, entry) => sum + entry.calories, 0);
-
-  return (
-    <Card className="min-w-0 px-4 py-1 sm:px-5">
-      <div className="flex min-h-14 items-center justify-between gap-3">
-        <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 text-sm font-semibold">
-          {meal}
-          {entries.length > 0 && (
-            <span className="text-xs font-normal text-ink-muted">
-              {Math.round(calories)} kcal
-            </span>
-          )}
-        </h3>
-        <button
-          onClick={onAdd}
-          className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-brand hover:bg-brand-soft"
-        >
-          <Plus size={13} /> Add
-        </button>
-      </div>
-
-      {entries.map((entry) => (
-        <div
-          key={entry.id}
-          className="flex min-h-14 items-center gap-3 border-t border-line-soft py-2"
-        >
-          <div className="min-w-0 flex-1">
-            <ScrollingText className="text-[13px] font-medium" title={entry.name}>
-              {entry.name}
-            </ScrollingText>
-            <p className="truncate text-[11px] text-ink-muted">{describePortion(entry)}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-[13px] font-medium tabular-nums">
-              {Math.round(entry.calories)} kcal
-            </p>
-            <p className="text-[11px] text-ink-faint tabular-nums">
-              P {Math.round(entry.protein)} · C {Math.round(entry.carbs)} · F{" "}
-              {Math.round(entry.fat)}
-            </p>
-          </div>
-          <IconButton danger label={`Remove ${entry.name}`} onClick={() => void onRemove(entry.id)}>
-            <Trash2 size={16} />
-          </IconButton>
-        </div>
-      ))}
-    </Card>
-  );
-}
-
-function describePortion(entry: DiaryEntry): string {
-  if (entry.source === "recipe" || entry.source === "user_recipe") {
-    const servings = entry.servings ?? 1;
-    return `${formatNumber(servings)} serving${servings === 1 ? "" : "s"}`;
-  }
-  if (entry.source === "ai_photo") return "Photo estimate";
-  return `${formatNumber(entry.amount)}${entry.unit}`;
-}
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
 function GoalPrompt({ onStart }: { onStart: () => void }) {
   return (
     <Card className="overflow-hidden">
@@ -308,21 +201,5 @@ function GoalPrompt({ onStart }: { onStart: () => void }) {
         </Button>
       </div>
     </Card>
-  );
-}
-
-function DiarySkeleton() {
-  return (
-    <div role="status" aria-label="Loading your diary" className="grid gap-3">
-      {[0, 1, 2].map((group) => (
-        <Card key={group} className="px-4 py-4 sm:px-5">
-          <div className="mb-3 flex items-center justify-between">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-12" />
-          </div>
-          <SkeletonBlock lines={2} />
-        </Card>
-      ))}
-    </div>
   );
 }

@@ -12,10 +12,11 @@ const RANGES = [
 ];
 
 /**
- * Below this there is no trend, only a couple of days. Drawing a chart from two
- * bars invites conclusions the data cannot support.
+ * Two days is not much of a trend, but it is what somebody who has logged two
+ * days wants to see. The chart is drawn from whatever exists and says how many
+ * days it rests on, rather than withholding it until some threshold is met.
  */
-const ENOUGH_DAYS = 3;
+const ENOUGH_DAYS = 1;
 
 /**
  * How the last week, month or year has actually gone.
@@ -98,7 +99,7 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
           <Skeleton className="h-32 w-full" />
         </div>
       ) : summary.daysLogged < ENOUGH_DAYS ? (
-        <NotEnoughYet range={range} logged={summary.daysLogged} />
+        <NothingYet range={range} />
       ) : (
         <>
           <Readout summary={summary} selected={selected} range={range} />
@@ -109,13 +110,7 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
             onPick={setPicked}
             range={range}
           />
-          <Stats
-            average={summary.averageProtein}
-            onTarget={summary.daysOnTarget}
-            logged={summary.daysLogged}
-            total={summary.totalCalories}
-            range={range}
-          />
+          <Averages summary={summary} range={range} />
         </>
       )}
     </Card>
@@ -275,27 +270,65 @@ function dayAndMonth(key: string): string {
   return `${Number(day)} ${MONTHS[Number(month) - 1]}`;
 }
 
-function Stats({
-  average,
-  onTarget,
-  logged,
-  total,
+/**
+ * What an average day looked like over the range, in words rather than bars.
+ *
+ * The chart shows the shape; this says the figure. Both are per *logged* day
+ * and the count is right there, so a fortnight logged four times reads as four
+ * days at whatever they held — not as a fortnight of near-starvation.
+ */
+function Averages({
+  summary,
   range,
 }: {
-  average: number;
-  onTarget: number;
-  logged: number;
-  total: number;
+  summary: ReturnType<typeof summariseTrend>;
   range: TrendRange;
 }) {
+  const macros = [
+    { label: "protein", value: summary.averageProtein },
+    { label: "carbs", value: summary.averageCarbs },
+    { label: "fat", value: summary.averageFat },
+  ];
+
   return (
-    <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 text-center">
-      <Stat label="Protein/day" value={`${Math.round(average)}g`} />
-      <Stat label="Within target" value={`${onTarget}/${logged}`} />
-      <Stat
-        label={range === "week" ? "This week" : range === "month" ? "This month" : "This year"}
-        value={`${compact(total)} kcal`}
-      />
+    <dl className="mt-4 grid gap-2.5 border-t border-line pt-4">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <dt className="text-[12px] text-ink-muted">Average daily intake</dt>
+        <dd className="text-[15px] font-semibold tabular-nums">
+          {Math.round(summary.averageCalories).toLocaleString()}
+          <span className="ml-1 text-[12px] font-normal text-ink-muted">kcal</span>
+        </dd>
+        <dd className="ml-auto text-[11px] text-ink-faint">
+          over {summary.daysLogged} logged {summary.daysLogged === 1 ? "day" : "days"}
+        </dd>
+      </div>
+
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[12px]">
+        <dt className="sr-only">Average daily macros</dt>
+        {macros.map((macro) => (
+          <dd key={macro.label} className="text-ink-muted">
+            {macro.label}{" "}
+            <strong className="font-semibold tabular-nums text-ink">
+              {Math.round(macro.value)}g
+            </strong>
+          </dd>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[11px] text-ink-muted">
+        <dd>
+          Within target on{" "}
+          <strong className="font-semibold tabular-nums text-ink">
+            {summary.daysOnTarget} of {summary.daysLogged}
+          </strong>
+        </dd>
+        <dd>
+          {range === "week" ? "This week" : range === "month" ? "This month" : "This year"}{" "}
+          <strong className="font-semibold tabular-nums text-ink">
+            {compact(summary.totalCalories)} kcal
+          </strong>
+        </dd>
+      </div>
     </dl>
   );
 }
@@ -308,27 +341,17 @@ function compact(value: number): string {
   }).format(Math.round(value));
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dd className="text-[15px] font-semibold tabular-nums">{value}</dd>
-      <dt className="truncate text-[11px] text-ink-muted">{label}</dt>
-    </div>
-  );
-}
-
-function NotEnoughYet({ range, logged }: { range: TrendRange; logged: number }) {
+/** Only when there is genuinely nothing — one logged day already draws. */
+function NothingYet({ range }: { range: TrendRange }) {
+  const span = range === "week" ? "week" : range === "month" ? "month" : "year";
   return (
     <div className="mt-5 flex flex-col items-center rounded-xl bg-muted px-4 py-6 text-center">
       <span className="grid size-10 place-items-center rounded-xl bg-surface text-ink-faint">
         <LineChart size={19} />
       </span>
-      <p className="mt-3 text-[13px] font-medium">Not enough to show a trend yet</p>
+      <p className="mt-3 text-[13px] font-medium">Nothing logged this {span}</p>
       <p className="mt-1 max-w-xs text-[12px] leading-relaxed text-ink-muted">
-        {logged === 0
-          ? `Nothing is logged in the last ${range === "week" ? "week" : range === "month" ? "month" : "year"}.`
-          : `Only ${logged} ${logged === 1 ? "day" : "days"} logged so far.`}{" "}
-        Log a few more days and the pattern will be worth looking at.
+        Log a meal and it will show up here from the very first day.
       </p>
     </div>
   );

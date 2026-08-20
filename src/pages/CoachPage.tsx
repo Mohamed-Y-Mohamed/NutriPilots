@@ -21,6 +21,7 @@ import {
   FunctionError,
   getAiUsage,
   loadChatHistory,
+  markEstimateLogged,
   sendChatMessage,
   uploadMealPhoto,
 } from "../services/aiClient";
@@ -147,7 +148,15 @@ export function CoachPage() {
 
     try {
       let imagePath: string | undefined;
-      if (photo && user) imagePath = await uploadMealPhoto(user.id, photo.blob);
+      if (photo && user) {
+        imagePath = await uploadMealPhoto(user.id, photo.blob);
+        // Once it is in storage the composer has no further use for it, and the
+        // message bubble already carries the preview. Waiting until the whole
+        // reply lands meant a slow or failed analysis left the picture sitting
+        // in the box looking as though it had never been sent.
+        setPhoto(null);
+        if (fileRef.current) fileRef.current.value = "";
+      }
 
       const response = await sendChatMessage(text, imagePath);
       const id = response.messageId ?? `local-${crypto.randomUUID()}`;
@@ -166,9 +175,6 @@ export function CoachPage() {
       ]);
       setAnimatingId(id);
       if (response.usage) setUsage(withUsage(response.usage));
-
-      setPhoto(null);
-      if (fileRef.current) fileRef.current.value = "";
     } catch (reason) {
       const message =
         reason instanceof Error ? reason.message : "The coach could not answer that.";
@@ -238,13 +244,17 @@ export function CoachPage() {
               key={message.id}
               message={message}
               animate={message.id === animatingId}
-              onLogged={(id) =>
+              onLogged={(id) => {
                 setMessages((current) =>
                   current.map((item) =>
                     item.id === id ? { ...item, loggedAt: new Date().toISOString() } : item,
                   ),
-                )
-              }
+                );
+                // Remembered on the message itself, so reopening the app does
+                // not offer the same meal again — and logging it twice.
+                // Locally-generated ids belong to no stored row.
+                if (!id.startsWith("local-")) void markEstimateLogged(id);
+              }}
               onPlanApplied={(id) =>
                 setMessages((current) =>
                   current.map((item) =>

@@ -470,25 +470,6 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden="true" className={cx("animate-pulse rounded-md bg-muted", className)} />;
 }
 
-export function SkeletonBlock({
-  lines = 3,
-  className,
-}: {
-  lines?: number;
-  className?: string;
-}) {
-  return (
-    <div className={cx("grid gap-2", className)} aria-hidden="true">
-      {Array.from({ length: lines }, (_, index) => (
-        <Skeleton
-          key={index}
-          className={cx("h-3", index === lines - 1 ? "w-2/3" : "w-full")}
-        />
-      ))}
-    </div>
-  );
-}
-
 /** Mirrors the shape of a FoodRow so the list does not jump when data lands. */
 export function SkeletonList({ rows = 6 }: { rows?: number }) {
   return (

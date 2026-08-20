@@ -147,16 +147,37 @@ export async function uploadMealPhoto(userId: string, blob: Blob): Promise<strin
   return path;
 }
 
+/** PostgREST's code for "you asked for a column this table does not have". */
+const UNDEFINED_COLUMN = "42703";
+
+const CHAT_FIELDS = "id,role,content,estimate,provider,model,created_at,logged_at";
+/** The same list for a database that predates the logged_at migration. */
+const CHAT_FIELDS_WITHOUT_LOGGED = "id,role,content,estimate,provider,model,created_at";
+
 export async function loadChatHistory(limit = 60): Promise<ChatMessage[]> {
-  const { data, error } = await requireSupabase()
-    .from("chat_messages")
-    .select("id,role,content,estimate,provider,model,created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const client = requireSupabase();
+  const read = (fields: string) =>
+    client
+      .from("chat_messages")
+      .select(fields)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+  let { data, error } = await read(CHAT_FIELDS);
+
+  // Losing the record of what was already logged is a card that offers twice;
+  // failing outright is a coach with no conversation in it at all.
+  if (error?.code === UNDEFINED_COLUMN) {
+    console.warn(
+      "[coach] chat_messages.logged_at is missing — run the chat_message_logged_at " +
+        "migration, or an estimate already added to the diary will be offered again.",
+    );
+    ({ data, error } = await read(CHAT_FIELDS_WITHOUT_LOGGED));
+  }
 
   if (error) throw new Error(error.message);
 
-  return (data ?? [])
+  return ((data ?? []) as unknown as Array<Record<string, unknown>>)
     .reverse()
     .map((row) => ({
       id: row.id as string,
@@ -165,7 +186,26 @@ export async function loadChatHistory(limit = 60): Promise<ChatMessage[]> {
       estimate: (row.estimate as MealEstimate | null) ?? null,
       provider: (row.provider as AiProvider | null) ?? null,
       createdAt: row.created_at as string,
+      // Without this the card comes back after a reload offering a meal that
+      // is already in the diary, and accepting it logs the meal twice.
+      loggedAt: (row.logged_at as string | null) ?? undefined,
     }));
+}
+
+/**
+ * Records that the user accepted this message's estimate.
+ *
+ * Best effort on purpose: the food is already in the diary by the time this
+ * runs, and failing here must not make it look as though it is not. The worst
+ * case is the card offering again after a reload, which is where it started.
+ */
+export async function markEstimateLogged(messageId: string): Promise<void> {
+  const { error } = await requireSupabase()
+    .from("chat_messages")
+    .update({ logged_at: new Date().toISOString() })
+    .eq("id", messageId);
+
+  if (error) console.warn("[coach] could not mark the estimate as logged:", error.message);
 }
 
 export async function clearChatHistory(userId: string): Promise<void> {

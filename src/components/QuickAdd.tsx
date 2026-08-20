@@ -1,13 +1,14 @@
-import { Camera, Check, Plus, Search } from "lucide-react";
+import { Camera, Check, Plus, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AddIngredientSheet } from "./AddIngredientSheet";
+import { CoachBanner } from "./CoachBanner";
 import { AddRecipeSheet } from "./AddRecipeSheet";
 import { ScrollingText } from "./ScrollingText";
-import { Alert, Button, Card, Segmented, Skeleton } from "./ui";
+import { Alert, Button, Card, IconButton, Segmented, Skeleton } from "./ui";
 import { loadRecentFoods } from "../services/diaryRepository";
 import { useAppData } from "../state/AppDataContext";
-import { MEALS, type MealName, type RecentFood } from "../types";
+import { MEALS, type DiaryEntry, type MealName, type RecentFood } from "../types";
 
 /** Enough to cover a habit without turning the top of the day into a list. */
 const SHOWN = 4;
@@ -23,7 +24,7 @@ const MEAL_OPTIONS = MEALS.map((meal) => ({ value: meal, label: meal }));
  */
 export function QuickAdd() {
   const navigate = useNavigate();
-  const { date, logFood } = useAppData();
+  const { date, diary, logFood, removeDiaryEntry } = useAppData();
 
   const [meal, setMeal] = useState<MealName>(mealForNow);
   const [recents, setRecents] = useState<RecentFood[]>([]);
@@ -77,13 +78,52 @@ export function QuickAdd() {
     }
   };
 
+  // The whole day, not just the selected meal. Reviewing and adding belong
+  // together — "have I had lunch yet?" and logging it are the same moment — but
+  // hiding the other three meals behind the tab that decides where new food
+  // goes would mean tapping through the day to read it.
+  const byMeal = MEALS.map((name) => ({
+    name,
+    entries: diary.filter((entry) => entry.meal === name),
+  })).filter((group) => group.entries.length > 0);
+
   return (
     <Card className="min-w-0 p-5 sm:p-6">
-      <h2 className="text-sm font-medium text-ink-muted">Quick add</h2>
+      <h2 className="text-sm font-medium text-ink-muted">Your food today</h2>
+
+      <CoachBanner className="mt-3" />
 
       <div className="mt-3">
         <Segmented options={MEAL_OPTIONS} value={meal} onChange={setMeal} ariaLabel="Meal" />
       </div>
+
+      {byMeal.length > 0 && (
+        <div className="mt-4 grid min-w-0 gap-3 border-b border-line pb-4">
+          {byMeal.map((group) => (
+            <ul key={group.name} className="grid min-w-0 gap-1">
+              <li className="flex items-center justify-between gap-2 text-[11px] font-medium text-ink-muted">
+                <span className="min-w-0 truncate">{group.name}</span>
+                <span className="shrink-0 tabular-nums">
+                  {Math.round(group.entries.reduce((sum, entry) => sum + entry.calories, 0))} kcal
+                </span>
+                {/* Points the adder at this meal, so a second helping of lunch
+                    does not need the tabs above finding first. */}
+                <button
+                  type="button"
+                  onClick={() => setMeal(group.name)}
+                  aria-label={`Add to ${group.name.toLowerCase()}`}
+                  className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-brand transition-colors hover:bg-brand-soft"
+                >
+                  <Plus size={13} /> Add
+                </button>
+              </li>
+              {group.entries.map((entry) => (
+                <LoggedRow key={entry.id} entry={entry} onRemove={removeDiaryEntry} />
+              ))}
+            </ul>
+          ))}
+        </div>
+      )}
 
       {note && (
         <Alert tone={note.tone} className="mt-3">
@@ -91,7 +131,11 @@ export function QuickAdd() {
         </Alert>
       )}
 
-      <div className="mt-4 min-w-0">
+      <p className="mt-4 text-[11px] font-medium text-ink-muted">
+        Add to {meal.toLowerCase()}
+      </p>
+
+      <div className="mt-2 min-w-0">
         {loading ? (
           <div className="grid gap-2">
             {[0, 1, 2].map((row) => (
@@ -172,6 +216,34 @@ export function QuickAdd() {
         />
       )}
     </Card>
+  );
+}
+
+/** One food already logged, with the only control it needs. */
+function LoggedRow({
+  entry,
+  onRemove,
+}: {
+  entry: DiaryEntry;
+  onRemove: (id: string) => Promise<void>;
+}) {
+  return (
+    <li className="flex min-h-11 min-w-0 items-center gap-2.5">
+      <span className="min-w-0 flex-1">
+        <ScrollingText className="text-[13px] font-medium" title={entry.name}>
+          {entry.name}
+        </ScrollingText>
+        <span className="block truncate text-[11px] text-ink-faint tabular-nums">
+          P {Math.round(entry.protein)} · C {Math.round(entry.carbs)} · F {Math.round(entry.fat)}
+        </span>
+      </span>
+      <span className="shrink-0 text-[12px] font-medium tabular-nums text-ink-muted">
+        {Math.round(entry.calories)} kcal
+      </span>
+      <IconButton danger label={`Remove ${entry.name}`} onClick={() => void onRemove(entry.id)}>
+        <Trash2 size={15} />
+      </IconButton>
+    </li>
   );
 }
 
