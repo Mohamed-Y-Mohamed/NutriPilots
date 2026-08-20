@@ -9,10 +9,12 @@ import {
   Moon,
   ShieldAlert,
   Sun,
+  Target,
   Trash2,
   UserRound,
 } from "lucide-react";
 import { useState } from "react";
+import { DailyTargetsEditor } from "../components/DailyTargetsEditor";
 import { LegalSheet } from "../components/LegalSheet";
 import {
   Alert,
@@ -118,6 +120,14 @@ export function SettingsPage() {
       )}
 
       <div className="grid gap-3">
+        <CollapsibleCard
+          icon={<Target size={17} />}
+          title="Daily targets"
+          description="What the ring and the macro bars measure you against."
+        >
+          <DailyTargetsEditor />
+        </CollapsibleCard>
+
         <CollapsibleCard
           icon={<Sun size={17} />}
           title="Appearance"

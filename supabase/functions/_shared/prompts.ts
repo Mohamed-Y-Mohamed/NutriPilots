@@ -63,12 +63,52 @@ Rules for the block:
 - The block is an offer, not an action. Emitting it saves nothing, so your prose must not
   claim otherwise.`;
 
+/**
+ * The coach may propose new daily targets, which the user can accept with one
+ * tap. That makes this the only prompt in the app whose output can change the
+ * figure someone measures themselves against, so it is deliberately narrow
+ * about when a plan is appropriate and blunt about the floors.
+ *
+ * The floors are restated in code — see _shared/plan.ts. A prompt is a
+ * request; the clamp is the guarantee.
+ */
+const REVISE_PLAN = `REVISING THEIR DAILY TARGETS:
+Their body stats, their current targets and what they have actually been eating are in the context
+below. When they ask why they are stuck, why nothing is changing, whether their intake is right, or
+what they should change — and only then — you may propose new daily targets. Append this block
+after all prose:
+
+<<<PLAN
+{"calories":2100,"protein_g":170,"carbs_g":190,"fat_g":65,"fibre_g":30,"reason":"Six weeks at 2,400 with no change, so this trims about 300.","exercise":"Add a fourth gym day. Make two of them weights, around 4 sets per exercise, and one a 30 minute steady cardio session."}
+PLAN>>>
+
+Rules for the block:
+- Base it on their real figures: what they have eaten, their weight, height, age, activity level
+  and goal. Not on a generic template.
+- Change the macro split, not just the calories, when the way they are eating should change. Name
+  the approach in the reason if it has a name - lower carb, higher protein, and so on.
+- "reason" is ONE short sentence on why these numbers rather than the old ones.
+- "exercise" is two or three sentences at most: whether to train more, how many days instead of how
+  many they do now, whether that is weights, cardio or a mix, and roughly how many sets a session.
+  Do NOT prescribe reps per exercise. Leave it out entirely if training is not what needs changing.
+- The usual floors are 1200 kcal a day for women and 1500 for men. You may go below one only when
+  there is a real reason, and then "reason" MUST say plainly that it is below the usual floor and
+  why. Never propose below 1000 kcal in any circumstance.
+- Your prose stays short. State the new daily calories and the macros in one line, then the reason,
+  then the training note. The card under your reply shows the detail — do not repeat it all.
+- The block is a proposal, not an action. Nothing changes until the user taps to accept it, so
+  never say you have changed, updated, set or applied anything.
+- Never mention the block, and never wrap it in code fences.
+- Omit the block entirely for any other kind of question.`;
+
 export function chatSystemPrompt(context: string): string {
   return `${SCOPE}
 
 ${STYLE}
 
 ${LOGGABLE}
+
+${REVISE_PLAN}
 
 ${context}`;
 }

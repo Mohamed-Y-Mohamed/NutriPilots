@@ -160,6 +160,57 @@ export function round1(value: number): number {
 }
 
 /**
+ * The targets actually in force: whatever the user or the coach last agreed,
+ * or the formula when neither has said otherwise.
+ *
+ * Everything that displays or compares against a target goes through here, so
+ * an accepted plan reaches the ring, the macro bars and the coach's own
+ * context without any of them knowing where the number came from.
+ */
+export function effectiveTargets(profile: UserProfile): DailyTargets {
+  return profile.targetOverride ?? calculateDailyTargets(profile);
+}
+
+/**
+ * The same plan at a different calorie figure, keeping the split intact.
+ *
+ * Changing one number by hand should not silently leave the other four
+ * describing a different diet: 2,000 kcal against macros that add up to 2,600
+ * is not a plan, it is two plans. Editing a macro on its own is left alone —
+ * that is the user deliberately shifting the balance.
+ */
+export function rescaleTargets(current: DailyTargets, calories: number): DailyTargets {
+  // Deliberately unclamped. Whether a figure is allowed is checkTargets' job,
+  // and clamping here would fight someone typing "1", "15", "150" on their way
+  // to 1500.
+  const wanted = Math.round(Number.isFinite(calories) ? Math.max(calories, 0) : 0);
+  if (wanted === current.calories) return current;
+
+  // With nothing to scale from, fall back to the default split rather than
+  // multiplying every macro by infinity.
+  if (current.calories <= 0) {
+    return {
+      calories: wanted,
+      protein: Math.round((wanted * 0.25) / 4),
+      carbs: Math.round((wanted * 0.45) / 4),
+      fat: Math.round((wanted * 0.3) / 9),
+      fibre: Math.max(25, Math.round((wanted / 1000) * 14)),
+    };
+  }
+
+  const scale = wanted / current.calories;
+  return {
+    calories: wanted,
+    protein: Math.round(current.protein * scale),
+    carbs: Math.round(current.carbs * scale),
+    fat: Math.round(current.fat * scale),
+    fibre: Math.round(current.fibre * scale),
+  };
+}
+
+
+
+/**
  * What a list of ingredients adds up to. Each line carries its nutrition per
  * 100g, so changing an amount is a multiplication rather than another trip to
  * the server — which is what lets a wrong portion be corrected in place.

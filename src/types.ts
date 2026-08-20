@@ -109,7 +109,19 @@ export interface UserProfile {
   goalMode: GoalMode;
   theme: ThemePreference;
   onboarded: boolean;
+  /**
+   * Daily figures that replace the calculated ones. Null means the formula
+   * still decides, which is what every profile starts as.
+   */
+  targetOverride: DailyTargets | null;
+  /** Who set the override. Null whenever there isn't one. */
+  targetsSource: TargetsSource | null;
+  /** When it was set, so the app can say where a number came from. */
+  targetsSetAt: string | null;
 }
+
+/** The coach proposed them and the user accepted, or the user typed them. */
+export type TargetsSource = "coach" | "manual";
 
 export interface DailyTargets {
   calories: number;
@@ -117,6 +129,21 @@ export interface DailyTargets {
   carbs: number;
   fat: number;
   fibre: number;
+}
+
+/**
+ * A revised daily plan the coach has proposed.
+ *
+ * Nothing here is applied until the user taps to accept it — the same rule
+ * that governs the diary. A model must not be able to move the target someone
+ * measures themselves against.
+ */
+export interface CoachPlan {
+  targets: DailyTargets;
+  /** One line on why these numbers, not the old ones. */
+  reason: string;
+  /** Short paragraph on training. Empty when there is nothing worth saying. */
+  exercise: string;
 }
 
 export type DiarySource =
@@ -273,10 +300,14 @@ export interface ChatMessage {
   estimate?: MealEstimate | null;
   /** Meals the coach named, each offered as an editable diary entry. */
   suggestions?: MealSuggestion[];
+  /** Revised daily targets the coach proposed, pending the user's approval. */
+  plan?: CoachPlan | null;
   provider?: AiProvider | null;
   createdAt: string;
   /** Set once the user has logged this estimate, so the card stops offering it. */
   loggedAt?: string;
+  /** Set once the user has accepted the plan, so the card stops offering it. */
+  planAppliedAt?: string;
 }
 
 export interface FoodReview {

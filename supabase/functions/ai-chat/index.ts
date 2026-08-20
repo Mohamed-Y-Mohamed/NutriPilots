@@ -9,6 +9,7 @@ import {
   needsIntakeHistory,
   summariseIntake,
 } from "../_shared/intake.ts";
+import { splitPlan } from "../_shared/plan.ts";
 import { splitSuggestions } from "../_shared/suggestions.ts";
 import { json, preflight } from "../_shared/cors.ts";
 import { FUNCTION_BUILD } from "../_shared/version.ts";
@@ -22,6 +23,15 @@ import {
 } from "../_shared/usage.ts";
 
 const HISTORY_LIMIT = 12;
+/**
+ * The lowest daily figure a proposed plan may carry, whatever the model says.
+ *
+ * Lower than the 1200/1500 the prompt states, on purpose: the coach is allowed
+ * below those when it has read someone's history and explains itself, which is
+ * the point of asking it. It is not allowed to prescribe starvation, and this
+ * is the line. Mirrored in src/lib/targetRanges.ts and by a CHECK constraint.
+ */
+const ABSOLUTE_FLOOR_CALORIES = 1000;
 const MAX_MESSAGE_CHARS = 2000;
 const SIGNED_URL_SECONDS = 300;
 
@@ -153,7 +163,11 @@ async function handleChat(
     temperature: 0.4,
   });
 
-  const { reply, suggestions } = splitSuggestions(result.text);
+  // The two blocks are independent: a reply can name a meal to log, propose new
+  // targets, both, or neither.
+  const withoutPlan = splitPlan(result.text, ABSOLUTE_FLOOR_CALORIES);
+  const { reply, suggestions } = splitSuggestions(withoutPlan.reply);
+  const plan = withoutPlan.plan;
 
   const { data: inserted } = await client
     .from("chat_messages")
@@ -173,6 +187,7 @@ async function handleChat(
     build: FUNCTION_BUILD,
     reply,
     suggestions,
+    plan,
     provider: result.provider,
     model: result.model,
     attempts: result.attempts,
@@ -373,7 +388,11 @@ async function buildContext(
   const [profileResult, diaryResult, intakeHistory] = await Promise.all([
     client
       .from("user_profiles")
-      .select("age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode")
+      // One literal, not a concatenation: supabase-js reads the column list at
+      // the type level and a `+` leaves it nothing to read.
+      .select(
+        "age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode, target_calories, target_protein_g, target_carbs_g, target_fat_g, target_fibre_g, targets_source",
+      )
       .eq("user_id", userId)
       .maybeSingle(),
     client
@@ -409,6 +428,22 @@ async function buildContext(
     if (profile.target_weight_kg) lines.push(`- Target weight ${profile.target_weight_kg} kg`);
     if (profile.activity_level) lines.push(`- Activity level: ${profile.activity_level}`);
     if (profile.goal_mode) lines.push(`- Goal: ${profile.goal_mode}`);
+
+    if (profile.target_calories) {
+      lines.push(
+        `- Current daily targets: ${Math.round(Number(profile.target_calories))} kcal, ` +
+          `${Math.round(Number(profile.target_protein_g ?? 0))}g protein, ` +
+          `${Math.round(Number(profile.target_carbs_g ?? 0))}g carbs, ` +
+          `${Math.round(Number(profile.target_fat_g ?? 0))}g fat, ` +
+          `${Math.round(Number(profile.target_fibre_g ?? 0))}g fibre ` +
+          `(set ${profile.targets_source === "coach" ? "by you, and accepted" : "by the user"}).`,
+      );
+    } else {
+      lines.push(
+        "- Current daily targets: worked out from the stats above by the app's own formula; " +
+          "the user has not overridden them.",
+      );
+    }
   } else {
     lines.push("- No profile saved yet. Suggest setting goals if it would help.");
   }

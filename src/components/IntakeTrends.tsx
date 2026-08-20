@@ -1,6 +1,6 @@
 import { LineChart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Card, Segmented, Skeleton } from "./ui";
+import { Alert, Card, cx, Segmented, Skeleton } from "./ui";
 import { rangeBounds, summariseTrend, type TrendBucket, type TrendRange } from "../lib/trends";
 import { loadDailyTotals } from "../services/analyticsRepository";
 import type { DayTotals } from "../types";
@@ -210,16 +210,7 @@ function Bars({
         </div>
       </div>
 
-      <div className="mt-1.5 flex gap-[2px]">
-        {buckets.map((bucket, index) => (
-          <span
-            key={bucket.key}
-            className="min-w-0 flex-1 text-center text-[9px] text-ink-faint"
-          >
-            {showLabel(index, buckets.length, range) ? bucket.label : ""}
-          </span>
-        ))}
-      </div>
+      <Axis buckets={buckets} range={range} />
 
       <figcaption className="mt-2 text-[11px] text-ink-faint">
         Each bar is a {range === "year" ? "month's average" : "day"}. The dashed line is your{" "}
@@ -228,6 +219,53 @@ function Bars({
       </figcaption>
     </figure>
   );
+}
+
+/**
+ * The scale under the bars.
+ *
+ * A week and a year are twelve labels at most, so each bar gets its own and
+ * they are aligned to their ends at the edges — centring the last one pushes
+ * half of it past the chart. Thirty day-labels would be a grey smear, so a
+ * month is labelled by date at its start, middle and end instead. Weekday
+ * names would say nothing useful across a month anyway.
+ */
+function Axis({ buckets, range }: { buckets: TrendBucket[]; range: TrendRange }) {
+  if (range === "month") {
+    const at = [0, Math.floor(buckets.length / 2), buckets.length - 1]
+      .map((index) => buckets[index])
+      .filter(Boolean);
+
+    return (
+      <div className="mt-1.5 flex justify-between text-[9px] text-ink-faint">
+        {at.map((bucket) => (
+          <span key={bucket.key}>{dayAndMonth(bucket.key)}</span>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex gap-[2px]">
+      {buckets.map((bucket, index) => (
+        <span
+          key={bucket.key}
+          className={cx(
+            "min-w-0 flex-1 overflow-hidden text-[9px] text-ink-faint",
+            index === 0 ? "text-left" : index === buckets.length - 1 ? "text-right" : "text-center",
+          )}
+        >
+          {bucket.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** "2026-08-20" as "20 Aug". */
+function dayAndMonth(key: string): string {
+  const [, month, day] = key.split("-");
+  return `${Number(day)} ${MONTHS[Number(month) - 1]}`;
 }
 
 function Stats({
@@ -303,12 +341,3 @@ const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
-
-/**
- * Thirty day-labels in the width of a phone is a grey smear. A week and a year
- * are short enough to label in full; a month gets its ends and its middle.
- */
-function showLabel(index: number, count: number, range: TrendRange): boolean {
-  if (range !== "month") return true;
-  return index === 0 || index === count - 1 || index === Math.floor(count / 2);
-}

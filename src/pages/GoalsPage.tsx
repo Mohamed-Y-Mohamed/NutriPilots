@@ -396,5 +396,11 @@ function toProfile(form: FormState, theme: UserProfile["theme"]): UserProfile {
     goalMode: (form.goalMode || "maintain") as GoalMode,
     theme,
     onboarded: true,
+    // Finishing the wizard is a request to work the targets out again, so any
+    // figure the coach or the user had set by hand gives way to the fresh
+    // calculation. Settings is where a bespoke plan is kept and reset.
+    targetOverride: null,
+    targetsSource: null,
+    targetsSetAt: null,
   };
 }

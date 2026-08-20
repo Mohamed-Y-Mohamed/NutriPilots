@@ -2,6 +2,7 @@ import { requireSupabase } from "../lib/supabase";
 import type {
   AiProvider,
   ChatMessage,
+  CoachPlan,
   MealEstimate,
   MealSuggestion,
   UsageCallType,
@@ -36,6 +37,8 @@ export interface AiChatResponse {
   estimate?: MealEstimate | null;
   /** Meals named in the reply, ready to be reviewed and logged. */
   suggestions?: MealSuggestion[];
+  /** New daily targets the coach proposed. Applied only if the user accepts. */
+  plan?: CoachPlan | null;
   analysisId?: string | null;
   messageId?: string | null;
   /** What is left of today's allowance for whichever bucket this call used. */

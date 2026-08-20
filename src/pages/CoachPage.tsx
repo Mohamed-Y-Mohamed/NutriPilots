@@ -10,6 +10,7 @@ import {
   useTypewriter,
 } from "../components/ui";
 import { IngredientLines } from "../components/IngredientLines";
+import { PlanCard } from "../components/PlanCard";
 import { ScrollingText } from "../components/ScrollingText";
 import { formatTimeUntil } from "../lib/dates";
 import { round1, totalsForLines } from "../lib/nutrition";
@@ -28,6 +29,7 @@ import { useAuth } from "../state/AuthContext";
 import {
   MEALS,
   type ChatMessage,
+  type CoachPlan,
   type MealEstimate,
   type MealName,
   type MealSuggestion,
@@ -158,6 +160,7 @@ export function CoachPage() {
           text: response.reply,
           estimate: response.estimate ?? null,
           suggestions: response.suggestions ?? [],
+          plan: response.plan ?? null,
           createdAt: new Date().toISOString(),
         },
       ]);
@@ -239,6 +242,13 @@ export function CoachPage() {
                 setMessages((current) =>
                   current.map((item) =>
                     item.id === id ? { ...item, loggedAt: new Date().toISOString() } : item,
+                  ),
+                )
+              }
+              onPlanApplied={(id) =>
+                setMessages((current) =>
+                  current.map((item) =>
+                    item.id === id ? { ...item, planAppliedAt: new Date().toISOString() } : item,
                   ),
                 )
               }
@@ -434,10 +444,12 @@ function MessageBubble({
   message,
   animate,
   onLogged,
+  onPlanApplied,
 }: {
   message: ChatMessage;
   animate: boolean;
   onLogged: (id: string) => void;
+  onPlanApplied: (id: string) => void;
 }) {
   const typed = useTypewriter(message.text, animate && message.role === "assistant");
 
@@ -478,6 +490,14 @@ function MessageBubble({
             estimate={message.estimate}
             logged={Boolean(message.loggedAt)}
             onLogged={() => onLogged(message.id)}
+          />
+        )}
+
+        {message.plan && !stillTyping && (
+          <PlanCard
+            plan={message.plan as CoachPlan}
+            applied={Boolean(message.planAppliedAt)}
+            onApplied={() => onPlanApplied(message.id)}
           />
         )}
 

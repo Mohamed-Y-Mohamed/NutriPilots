@@ -8,7 +8,12 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { calculateDailyTargets, sumEntries, type DiaryTotals } from "../lib/nutrition";
+import {
+  calculateDailyTargets,
+  effectiveTargets,
+  sumEntries,
+  type DiaryTotals,
+} from "../lib/nutrition";
 import { localDateKey } from "../lib/dates";
 import {
   addDiaryEntry as addEntry,
@@ -22,7 +27,13 @@ import {
   resetHealthData,
   saveProfile,
 } from "../services/profileRepository";
-import type { DailyTargets, DiaryDraft, DiaryEntry, UserProfile } from "../types";
+import type {
+  DailyTargets,
+  DiaryDraft,
+  DiaryEntry,
+  TargetsSource,
+  UserProfile,
+} from "../types";
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
 
@@ -30,7 +41,10 @@ interface AppDataValue {
   profile: UserProfile;
   /** False until the user has actually saved their goals. */
   hasProfile: boolean;
+  /** What the app measures against: an accepted plan, or the formula. */
   targets: DailyTargets;
+  /** What the formula alone says, for comparing an override against. */
+  calculatedTargets: DailyTargets;
   date: string;
   setDate: (date: string) => void;
   diary: DiaryEntry[];
@@ -38,6 +52,8 @@ interface AppDataValue {
   isLoading: boolean;
   error: string | null;
   saveUserProfile: (profile: UserProfile) => Promise<void>;
+  /** Replaces the daily targets, or clears them back to the formula with null. */
+  saveTargets: (targets: DailyTargets | null, source: TargetsSource) => Promise<void>;
   logFood: (draft: DiaryDraft) => Promise<DiaryEntry>;
   removeDiaryEntry: (id: string) => Promise<void>;
   clearDiary: () => Promise<void>;
@@ -129,6 +145,23 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     [user],
   );
 
+  const saveTargets = useCallback(
+    async (targets: DailyTargets | null, source: TargetsSource) => {
+      if (!user) throw new Error("Please sign in to change your targets.");
+      const next: UserProfile = {
+        ...profile,
+        targetOverride: targets,
+        targetsSource: targets ? source : null,
+        // Cleared rather than carried over, so "set on 3 Aug" cannot outlive
+        // the numbers it described.
+        targetsSetAt: targets ? new Date().toISOString() : null,
+      };
+      await saveProfile(user.id, next);
+      setProfileState(next);
+    },
+    [user, profile],
+  );
+
   const logFood = useCallback(
     async (draft: DiaryDraft) => {
       if (!user) throw new Error("Please sign in to log food.");
@@ -163,7 +196,8 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     () => ({
       profile,
       hasProfile,
-      targets: calculateDailyTargets(profile),
+      targets: effectiveTargets(profile),
+      calculatedTargets: calculateDailyTargets(profile),
       date,
       setDate,
       diary,
@@ -171,6 +205,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
       isLoading,
       error,
       saveUserProfile,
+      saveTargets,
       logFood,
       removeDiaryEntry,
       clearDiary,
@@ -185,6 +220,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
       isLoading,
       error,
       saveUserProfile,
+      saveTargets,
       logFood,
       removeDiaryEntry,
       clearDiary,

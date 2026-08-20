@@ -20,6 +20,9 @@ const profile: UserProfile = {
   goalMode: "maintain",
   theme: "system",
   onboarded: true,
+  targetOverride: null,
+  targetsSource: null,
+  targetsSetAt: null,
 };
 
 const ingredient: Ingredient = {
