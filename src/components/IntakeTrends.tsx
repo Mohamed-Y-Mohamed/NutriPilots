@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, cx, Segmented, Skeleton } from "./ui";
 import { rangeBounds, summariseTrend, type TrendBucket, type TrendRange } from "../lib/trends";
 import { loadDailyTotals, MissingMigrationError } from "../services/analyticsRepository";
+import { useAppData } from "../state/AppDataContext";
 import type { DayTotals } from "../types";
 
 const RANGES = [
@@ -28,6 +29,14 @@ const ENOUGH_DAYS = 1;
  * turn a patchy month into a fast.
  */
 export function IntakeTrends({ target, today }: { target: number; today: string }) {
+  // Today's bar is drawn from the same rows the diary shows, so adding or
+  // deleting food has to send it back for them. Without this a deleted meal
+  // stays in the chart and the averages until the range is switched.
+  const { diary } = useAppData();
+  const diarySignature = `${diary.length}:${Math.round(
+    diary.reduce((sum, entry) => sum + entry.calories, 0),
+  )}`;
+
   const [range, setRange] = useState<TrendRange>("week");
   const [days, setDays] = useState<DayTotals[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +72,7 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
     return () => {
       live = false;
     };
-  }, [range, today]);
+  }, [range, today, diarySignature]);
 
   const summary = useMemo(
     () => summariseTrend(days, { range, today, target }),

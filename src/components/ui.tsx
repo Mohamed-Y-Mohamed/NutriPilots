@@ -288,11 +288,14 @@ export function Segmented<T extends string>({
   value,
   onChange,
   ariaLabel,
+  compact = false,
 }: {
   options: Array<{ value: T; label: string; icon?: ReactNode }>;
   value: T;
   onChange: (value: T) => void;
   ariaLabel?: string;
+  /** For five or more options, where a full-size label would be cut off. */
+  compact?: boolean;
 }) {
   return (
     <div
@@ -309,7 +312,8 @@ export function Segmented<T extends string>({
             aria-selected={active}
             onClick={() => onChange(option.value)}
             className={cx(
-              "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2 text-[13px] font-medium transition-colors",
+              "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg font-medium transition-colors",
+              compact ? "px-1 text-[11px]" : "px-2 text-[13px]",
               active ? "bg-surface text-ink shadow-xs" : "text-ink-muted hover:text-ink",
             )}
           >

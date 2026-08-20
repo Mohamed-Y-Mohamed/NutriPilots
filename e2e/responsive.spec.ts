@@ -409,7 +409,38 @@ test.describe("signed-in layout", () => {
     await expect(hint).toHaveCount(0);
   });
 
-  test("the whole day is readable without changing the meal tab", async ({ page }) => {
+  test("All shows every meal, and a meal tab shows only that one", async ({ page }) => {
+    await signIn(page);
+    await stubSupabase(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.goto("/dashboard");
+    const card = page.getByRole("heading", { name: "Your food today" });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+
+    const tabs = page.getByRole("tablist", { name: "Meal" }).first();
+
+    // It opens on All, with the fixture's breakfast and lunch both present.
+    await expect(tabs.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("Porridge")).toBeVisible();
+    await expect(page.getByText("Slow-roasted lamb shoulder", { exact: false })).toBeVisible();
+
+    // Lunch narrows it to lunch alone.
+    await tabs.getByRole("tab", { name: "Lunch" }).click();
+    await expect(page.getByText("Slow-roasted lamb shoulder", { exact: false })).toBeVisible();
+    await expect(page.getByText("Porridge")).toHaveCount(0);
+
+    // A meal with nothing in it says so rather than vanishing.
+    await tabs.getByRole("tab", { name: "Dinner" }).click();
+    await expect(page.getByText("Nothing logged.")).toBeVisible();
+
+    // Every meal keeps both controls: add on the heading, delete on the row.
+    await tabs.getByRole("tab", { name: "Breakfast" }).click();
+    await expect(page.getByRole("button", { name: "Add to breakfast" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove Porridge" })).toBeVisible();
+  });
+
+  test("adding from a meal points the adder at that meal", async ({ page }) => {
     await signIn(page);
     await stubSupabase(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -419,12 +450,13 @@ test.describe("signed-in layout", () => {
       timeout: 15_000,
     });
 
-    // The fixture has breakfast and lunch. Both show, whichever tab is active.
-    await expect(page.getByText("Porridge")).toBeVisible();
-    await expect(page.getByText("Slow-roasted lamb shoulder", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Add to breakfast" }).click();
 
-    // And each has the delete the removed section used to provide.
-    await expect(page.getByRole("button", { name: "Remove Porridge" })).toBeVisible();
+    const adder = page.getByRole("tablist", { name: "Add to" });
+    await expect(adder.getByRole("tab", { name: "Breakfast" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   /**

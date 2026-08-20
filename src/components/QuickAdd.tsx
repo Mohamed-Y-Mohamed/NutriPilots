@@ -1,14 +1,14 @@
-import { Camera, Check, Plus, Search, Trash2 } from "lucide-react";
+import { Camera, Check, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AddIngredientSheet } from "./AddIngredientSheet";
 import { CoachBanner } from "./CoachBanner";
 import { AddRecipeSheet } from "./AddRecipeSheet";
 import { ScrollingText } from "./ScrollingText";
-import { Alert, Button, Card, IconButton, Segmented, Skeleton } from "./ui";
+import { Alert, Button, Card, Segmented, Skeleton } from "./ui";
 import { loadRecentFoods } from "../services/diaryRepository";
 import { useAppData } from "../state/AppDataContext";
-import { MEALS, type DiaryEntry, type MealName, type RecentFood } from "../types";
+import { MEALS, type MealName, type RecentFood } from "../types";
 
 /** Enough to cover a habit without turning the top of the day into a list. */
 const SHOWN = 4;
@@ -22,11 +22,16 @@ const MEAL_OPTIONS = MEALS.map((meal) => ({ value: meal, label: meal }));
  * for porridge every morning is the wrong default, so what they have logged
  * before comes first and the search is one tap further on.
  */
-export function QuickAdd() {
+export function QuickAdd({
+  meal,
+  onMealChange,
+}: {
+  meal: MealName;
+  onMealChange: (meal: MealName) => void;
+}) {
   const navigate = useNavigate();
-  const { date, diary, logFood, removeDiaryEntry } = useAppData();
-
-  const [meal, setMeal] = useState<MealName>(mealForNow);
+  const { date, diary, logFood } = useAppData();
+  const setMeal = onMealChange;
   const [recents, setRecents] = useState<RecentFood[]>([]);
   const [loading, setLoading] = useState(true);
   const [sheet, setSheet] = useState<"ingredient" | "recipe" | null>(null);
@@ -41,7 +46,13 @@ export function QuickAdd() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(reload, [reload]);
+  // Recents are derived from the diary, so they are re-read whenever it
+  // changes — including a delete, which would otherwise leave a food listed
+  // with a count that is no longer true.
+  const diarySignature = `${diary.length}:${Math.round(
+    diary.reduce((sum, entry) => sum + entry.calories, 0),
+  )}`;
+  useEffect(reload, [reload, diarySignature]);
 
   const add = async (food: RecentFood) => {
     if (busy) return;
@@ -78,52 +89,15 @@ export function QuickAdd() {
     }
   };
 
-  // The whole day, not just the selected meal. Reviewing and adding belong
-  // together — "have I had lunch yet?" and logging it are the same moment — but
-  // hiding the other three meals behind the tab that decides where new food
-  // goes would mean tapping through the day to read it.
-  const byMeal = MEALS.map((name) => ({
-    name,
-    entries: diary.filter((entry) => entry.meal === name),
-  })).filter((group) => group.entries.length > 0);
-
   return (
     <Card className="min-w-0 p-5 sm:p-6">
-      <h2 className="text-sm font-medium text-ink-muted">Your food today</h2>
+      <h2 className="text-sm font-medium text-ink-muted">Add food</h2>
 
       <CoachBanner className="mt-3" />
 
       <div className="mt-3">
-        <Segmented options={MEAL_OPTIONS} value={meal} onChange={setMeal} ariaLabel="Meal" />
+        <Segmented options={MEAL_OPTIONS} value={meal} onChange={setMeal} ariaLabel="Add to" />
       </div>
-
-      {byMeal.length > 0 && (
-        <div className="mt-4 grid min-w-0 gap-3 border-b border-line pb-4">
-          {byMeal.map((group) => (
-            <ul key={group.name} className="grid min-w-0 gap-1">
-              <li className="flex items-center justify-between gap-2 text-[11px] font-medium text-ink-muted">
-                <span className="min-w-0 truncate">{group.name}</span>
-                <span className="shrink-0 tabular-nums">
-                  {Math.round(group.entries.reduce((sum, entry) => sum + entry.calories, 0))} kcal
-                </span>
-                {/* Points the adder at this meal, so a second helping of lunch
-                    does not need the tabs above finding first. */}
-                <button
-                  type="button"
-                  onClick={() => setMeal(group.name)}
-                  aria-label={`Add to ${group.name.toLowerCase()}`}
-                  className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-brand transition-colors hover:bg-brand-soft"
-                >
-                  <Plus size={13} /> Add
-                </button>
-              </li>
-              {group.entries.map((entry) => (
-                <LoggedRow key={entry.id} entry={entry} onRemove={removeDiaryEntry} />
-              ))}
-            </ul>
-          ))}
-        </div>
-      )}
 
       {note && (
         <Alert tone={note.tone} className="mt-3">
@@ -132,7 +106,7 @@ export function QuickAdd() {
       )}
 
       <p className="mt-4 text-[11px] font-medium text-ink-muted">
-        Add to {meal.toLowerCase()}
+        Your usual foods
       </p>
 
       <div className="mt-2 min-w-0">
@@ -217,46 +191,6 @@ export function QuickAdd() {
       )}
     </Card>
   );
-}
-
-/** One food already logged, with the only control it needs. */
-function LoggedRow({
-  entry,
-  onRemove,
-}: {
-  entry: DiaryEntry;
-  onRemove: (id: string) => Promise<void>;
-}) {
-  return (
-    <li className="flex min-h-11 min-w-0 items-center gap-2.5">
-      <span className="min-w-0 flex-1">
-        <ScrollingText className="text-[13px] font-medium" title={entry.name}>
-          {entry.name}
-        </ScrollingText>
-        <span className="block truncate text-[11px] text-ink-faint tabular-nums">
-          P {Math.round(entry.protein)} · C {Math.round(entry.carbs)} · F {Math.round(entry.fat)}
-        </span>
-      </span>
-      <span className="shrink-0 text-[12px] font-medium tabular-nums text-ink-muted">
-        {Math.round(entry.calories)} kcal
-      </span>
-      <IconButton danger label={`Remove ${entry.name}`} onClick={() => void onRemove(entry.id)}>
-        <Trash2 size={15} />
-      </IconButton>
-    </li>
-  );
-}
-
-/**
- * Whichever meal it probably is. Breakfast at nine and dinner at seven is a
- * better opening guess than always offering lunch.
- */
-function mealForNow(): MealName {
-  const hour = new Date().getHours();
-  if (hour < 11) return "Breakfast";
-  if (hour < 16) return "Lunch";
-  if (hour < 21) return "Dinner";
-  return "Snacks";
 }
 
 /** Two foods can share a name across sources, so both make the key. */

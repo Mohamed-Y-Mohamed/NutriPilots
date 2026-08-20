@@ -128,9 +128,20 @@ export function CoachPage() {
 
   const send = async (event?: FormEvent, overrideText?: string) => {
     event?.preventDefault();
+    if (sending) return;
+
     const text = (overrideText ?? prompt).trim();
-    // Every message carries text; the photo is the optional part.
-    if (sending || !text) return;
+    // Every message carries text; the photo is the optional part. Saying so
+    // beats returning in silence: a send button that does nothing reads as a
+    // broken app, and the user has no idea the note is what is missing.
+    if (!text) {
+      setError(
+        photo
+          ? "Add a note saying what this is before sending the photo."
+          : "Type a message first.",
+      );
+      return;
+    }
 
     setSending(true);
     setError(null);
@@ -148,14 +159,12 @@ export function CoachPage() {
 
     try {
       let imagePath: string | undefined;
-      if (photo && user) {
+      if (photo) {
+        // A photo with no session cannot be uploaded, and quietly sending the
+        // message without it would answer a question about a picture the model
+        // never saw. Better to stop and say so.
+        if (!user) throw new Error("You have been signed out. Sign in again to send a photo.");
         imagePath = await uploadMealPhoto(user.id, photo.blob);
-        // Once it is in storage the composer has no further use for it, and the
-        // message bubble already carries the preview. Waiting until the whole
-        // reply lands meant a slow or failed analysis left the picture sitting
-        // in the box looking as though it had never been sent.
-        setPhoto(null);
-        if (fileRef.current) fileRef.current.value = "";
       }
 
       const response = await sendChatMessage(text, imagePath);
@@ -175,6 +184,12 @@ export function CoachPage() {
       ]);
       setAnimatingId(id);
       if (response.usage) setUsage(withUsage(response.usage));
+
+      // Cleared only once the exchange has actually completed. A failure keeps
+      // both the photo and the words, because the next thing the user will do
+      // is press send again.
+      setPhoto(null);
+      if (fileRef.current) fileRef.current.value = "";
     } catch (reason) {
       const message =
         reason instanceof Error ? reason.message : "The coach could not answer that.";

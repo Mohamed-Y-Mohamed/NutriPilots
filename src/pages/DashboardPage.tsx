@@ -19,9 +19,23 @@ import {
 import { CoachBanner } from "../components/CoachBanner";
 import { IntakeTrends } from "../components/IntakeTrends";
 import { QuickAdd } from "../components/QuickAdd";
+import { TodayFood } from "../components/TodayFood";
+import type { MealName } from "../types";
 import { addDays, formatDayLabel, localDateKey } from "../lib/dates";
 import { useAppData } from "../state/AppDataContext";
 
+
+/**
+ * Whichever meal it probably is. Breakfast at nine and dinner at seven is a
+ * better opening guess than always offering lunch.
+ */
+function mealForNow(): MealName {
+  const hour = new Date().getHours();
+  if (hour < 11) return "Breakfast";
+  if (hour < 16) return "Lunch";
+  if (hour < 21) return "Dinner";
+  return "Snacks";
+}
 
 /** Marks that the photo-estimate hint has had its one showing. */
 const COACH_HINT_SEEN = "nutripilot.coachHintSeen";
@@ -38,6 +52,10 @@ export function DashboardPage() {
     error,
   } = useAppData();
   const navigate = useNavigate();
+
+  // Which meal new food goes to. Shared, so the Add on a meal and the picker
+  // in the card below cannot disagree.
+  const [meal, setMeal] = useState<MealName>(mealForNow);
 
   // First run only. Written the moment it is shown, so a reload settles it.
   const [showCoachHint, setShowCoachHint] = useState(false);
@@ -94,7 +112,11 @@ export function DashboardPage() {
         <GoalPrompt onStart={() => navigate("/goals")} />
       ) : (
       <div className="grid gap-4">
-        <QuickAdd />
+        {/* Reading the day and adding to it are two cards, sharing one idea of
+            which meal is in play: tapping Add on a meal above points the adder
+            at it. */}
+        <TodayFood onAddTo={setMeal} />
+        <QuickAdd meal={meal} onMealChange={setMeal} />
 
         <div className="grid gap-4 md:grid-cols-2">
         <Card className="min-w-0 p-5 sm:p-6">
