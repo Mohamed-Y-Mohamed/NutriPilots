@@ -13,6 +13,25 @@ export function addDays(dateKey: string, days: number): string {
   return localDateKey(date);
 }
 
+/**
+ * How long until an instant, as "3h 20m" or "12m".
+ *
+ * A countdown rather than a clock time: the daily AI allowance resets at
+ * midnight UTC, which lands at a different — and to most people meaningless —
+ * hour depending on where they are.
+ */
+export function formatTimeUntil(iso: string): string {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return "a moment";
+
+  const totalMinutes = Math.round(diffMs / 60_000);
+  if (totalMinutes === 0) return "under a minute";
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
+}
+
 function isToday(dateKey: string): boolean {
   return dateKey === localDateKey();
 }

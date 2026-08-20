@@ -1,5 +1,16 @@
-import { AlertTriangle, Camera, Check, Info, Plus, Sparkles, Wand2, X } from "lucide-react";
-import { useRef, useState, type ChangeEvent } from "react";
+import {
+  AlertTriangle,
+  Camera,
+  Check,
+  Database,
+  Info,
+  PencilLine,
+  Plus,
+  Sparkles,
+  Wand2,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ReasonList } from "./AddIngredientSheet";
 import {
   Alert,
@@ -16,13 +27,17 @@ import { prepareImage } from "../lib/image";
 import { capturePhoto, isNative } from "../lib/native";
 import { uploadMealPhoto } from "../services/aiClient";
 import { useAuth } from "../state/AuthContext";
-import { macroCalorieMismatch } from "../lib/nutrition";
+import { macroCalorieMismatch, round1, totalsForLines } from "../lib/nutrition";
+import { IngredientLines } from "./IngredientLines";
 import {
+  estimateDishFromText,
   promoteToSharedDatabase,
   scanRecipePhoto,
   submitRecipe,
 } from "../services/libraryRepository";
-import type { FoodReview, RecipeDraft } from "../types";
+import type { EstimateLine, FoodReview, RecipeDraft, RecipeScan } from "../types";
+
+const MAX_DESCRIPTION = 1500;
 
 /** The reference `recipes` table requires exactly one of these, so user recipes match. */
 const BASE_DIETS = ["omnivore", "vegetarian", "vegan", "pescatarian"] as const;
@@ -70,15 +85,22 @@ export function AddRecipeSheet({
   const [review, setReview] = useState<FoodReview | null>(null);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [estimated, setEstimated] = useState<string[]>([]);
+  const [describing, setDescribing] = useState(false);
+  const [description, setDescription] = useState("");
+  const [grounded, setGrounded] = useState<{ matched: number; total: number } | null>(null);
+  const [lines, setLines] = useState<EstimateLine[]>([]);
 
   const { user } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const set = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
-    // Any edit invalidates a verdict the AI gave for different numbers.
+    // Any edit invalidates a verdict the AI gave for different numbers, and the
+    // note about which ingredients came from the database describes numbers
+    // that no longer exist.
     setReview(null);
     setNeedsConfirm(false);
+    setGrounded(null);
   };
 
   const scan = async (source: "camera" | "gallery") => {
@@ -122,38 +144,104 @@ export function AddRecipeSheet({
         return;
       }
 
-      const draft = result.draft;
-      setForm({
-        name: draft.name,
-        description: draft.description,
-        servings: String(draft.servings || 1),
-        prep_time_minutes: draft.prep_time_minutes ? String(draft.prep_time_minutes) : "",
-        cook_time_minutes: draft.cook_time_minutes ? String(draft.cook_time_minutes) : "",
-        instructions: draft.instructions,
-        calories_per_serving: String(draft.calories_per_serving),
-        protein_per_serving_g: String(draft.protein_per_serving_g),
-        carbs_per_serving_g: String(draft.carbs_per_serving_g),
-        fat_per_serving_g: String(draft.fat_per_serving_g),
-        fibre_per_serving_g: String(draft.fibre_per_serving_g),
-        cuisine: draft.cuisine,
-      });
-      if (draft.ingredients.length > 0) setIngredients(draft.ingredients);
-
-      const base = draft.dietary_tags.find((tag) =>
-        (BASE_DIETS as readonly string[]).includes(tag),
-      );
-      if (base) setBaseDiet(base as (typeof BASE_DIETS)[number]);
-      setExtraTags(draft.dietary_tags.filter((tag) => tag !== base));
-
-      setEstimated(result.estimatedFields ?? []);
-      // The scan already judged these exact numbers, so save reuses the verdict.
-      setReview(result.review);
-      setNeedsConfirm(result.review.verdict === "needs_review");
+      applyDraft(result);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not read that photo.");
     } finally {
       setScanning(false);
     }
+  };
+
+  /**
+   * Typing a dish and photographing one return the same shape, so they fill the
+   * form through the same path — the only difference a reader has to hold is
+   * where the draft came from.
+   */
+  const applyDraft = (result: RecipeScan) => {
+    const draft = result.draft;
+    setForm({
+      name: draft.name,
+      description: draft.description,
+      servings: String(draft.servings || 1),
+      prep_time_minutes: draft.prep_time_minutes ? String(draft.prep_time_minutes) : "",
+      cook_time_minutes: draft.cook_time_minutes ? String(draft.cook_time_minutes) : "",
+      instructions: draft.instructions,
+      calories_per_serving: String(draft.calories_per_serving),
+      protein_per_serving_g: String(draft.protein_per_serving_g),
+      carbs_per_serving_g: String(draft.carbs_per_serving_g),
+      fat_per_serving_g: String(draft.fat_per_serving_g),
+      fibre_per_serving_g: String(draft.fibre_per_serving_g),
+      cuisine: draft.cuisine,
+    });
+    if (draft.ingredients.length > 0) setIngredients(draft.ingredients);
+
+    const base = draft.dietary_tags.find((tag) =>
+      (BASE_DIETS as readonly string[]).includes(tag),
+    );
+    if (base) setBaseDiet(base as (typeof BASE_DIETS)[number]);
+    setExtraTags(draft.dietary_tags.filter((tag) => tag !== base));
+
+    setLines(result.lines ?? []);
+    setEstimated(result.estimatedFields ?? []);
+    setGrounded(
+      typeof result.matchedFromDatabase === "number" && result.totalIngredients
+        ? { matched: result.matchedFromDatabase, total: result.totalIngredients }
+        : null,
+    );
+    // The draft was already judged against these exact numbers, so saving
+    // reuses the verdict rather than paying for a second check.
+    setReview(result.review);
+    setNeedsConfirm(result.review.verdict === "needs_review");
+  };
+
+  const runEstimate = async () => {
+    const text = description.trim();
+    if (!text || scanning || busy) return;
+    setScanning(true);
+    setError(null);
+
+    try {
+      const result = await estimateDishFromText(text);
+      if (!result.recognised) {
+        setError(result.error ?? "That did not look like a dish.");
+        return;
+      }
+      applyDraft(result);
+      setDescribing(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not work that one out.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  // With itemised ingredients the per-serving figures are never typed, only
+  // derived — so correcting an amount, or changing how many servings it makes,
+  // updates the nutrition without the user touching four separate boxes.
+  useEffect(() => {
+    if (lines.length === 0) return;
+    const servings = Math.max(1, Number(form.servings) || 1);
+    const totals = totalsForLines(lines);
+
+    setForm((current) => ({
+      ...current,
+      calories_per_serving: String(Math.round(totals.calories / servings)),
+      protein_per_serving_g: String(round1(totals.protein / servings)),
+      carbs_per_serving_g: String(round1(totals.carbs / servings)),
+      fat_per_serving_g: String(round1(totals.fat / servings)),
+      fibre_per_serving_g: String(round1(totals.fibre / servings)),
+    }));
+    setIngredients(
+      lines.map((line) => `${Math.max(1, Math.round(line.amount))}${line.unit} ${line.name}`),
+    );
+  }, [lines, form.servings]);
+
+  const editLines = (next: EstimateLine[]) => {
+    setLines(next);
+    // The numbers the AI judged are no longer the numbers being saved.
+    setReview(null);
+    setNeedsConfirm(false);
+    setGrounded(null);
   };
 
   const filledIngredients = ingredients.map((line) => line.trim()).filter(Boolean);
@@ -275,19 +363,75 @@ export function AddRecipeSheet({
               onClick={() => void scan("camera")}
               disabled={scanning || busy}
             >
-              <Camera size={16} /> {scanning ? "Reading recipe…" : "Scan a recipe or dish"}
+              <Camera size={16} />
+              {scanning && !describing ? "Reading recipe…" : "Scan a recipe or dish"}
             </Button>
             {isNative && (
-              <Button onClick={() => void scan("gallery")} disabled={scanning || busy}>
+              <Button
+                onClick={() => void scan("gallery")}
+                disabled={scanning || busy}
+                aria-label="Choose a photo"
+              >
                 <Wand2 size={16} />
               </Button>
             )}
           </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-            Photograph a recipe page, a handwritten card, or the finished dish. One photo fills in
-            the ingredients, method and per-serving nutrition.
-          </p>
+
+          <Button
+            full
+            className="mt-2"
+            aria-expanded={describing}
+            onClick={() => setDescribing((open) => !open)}
+            disabled={scanning || busy}
+          >
+            <PencilLine size={16} /> {describing ? "Hide the description" : "Describe it instead"}
+          </Button>
+
+          {describing ? (
+            <div className="animate-fade-in mt-2 rounded-xl border border-line bg-surface p-3">
+              <textarea
+                autoFocus
+                rows={4}
+                maxLength={MAX_DESCRIPTION}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Chicken curry with rice and a side salad. Serves 4."
+                className={`${inputClass} resize-y leading-relaxed`}
+              />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+                Amounts help but are not required. Cups, handfuls and &ldquo;a bit of&rdquo; all
+                work, and so do takeaways and leftovers.
+              </p>
+              <Button
+                variant="primary"
+                full
+                className="mt-2.5"
+                onClick={() => void runEstimate()}
+                disabled={scanning || busy || description.trim().length === 0}
+              >
+                <Sparkles size={16} /> {scanning ? "Working it out…" : "Work it out"}
+              </Button>
+            </div>
+          ) : (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+              Photograph a recipe page, a handwritten card, or the finished dish. One photo fills in
+              the ingredients, method and per-serving nutrition.
+            </p>
+          )}
         </div>
+
+        {grounded && grounded.total > 0 && (
+          <p className="flex items-start gap-2 text-[11px] leading-relaxed text-ink-muted">
+            <Database size={13} className="mt-0.5 shrink-0 text-ink-faint" />
+            <span>
+              <span className="font-medium text-ink">
+                {grounded.matched} of {grounded.total}
+              </span>{" "}
+              ingredients were priced from foods already in the database. The rest are the
+              AI&rsquo;s own estimate.
+            </span>
+          </p>
+        )}
 
         {estimated.length > 0 && (
           <Alert tone="info">
@@ -367,40 +511,55 @@ export function AddRecipeSheet({
 
         <div>
           <span className={labelClass}>Ingredients *</span>
-          <div className="mt-2 grid gap-2">
-            {ingredients.map((line, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <input
-                  className={inputClass}
-                  value={line}
-                  onChange={(event) =>
-                    setIngredients((current) =>
-                      current.map((item, position) =>
-                        position === index ? event.target.value : item,
-                      ),
-                    )
-                  }
-                  placeholder={index === 0 ? "400g chicken thighs" : "1 tbsp olive oil"}
-                />
-                <IconButton
-                  label="Remove ingredient"
-                  disabled={ingredients.length === 1}
-                  onClick={() =>
-                    setIngredients((current) => current.filter((_, position) => position !== index))
-                  }
-                >
-                  <X size={16} />
-                </IconButton>
+
+          {lines.length > 0 ? (
+            <>
+              <p className="mb-2 mt-1 text-[11px] leading-relaxed text-ink-faint">
+                Change an amount if it looks wrong and the nutrition below follows. Add anything
+                missing, or remove what is not in it.
+              </p>
+              <IngredientLines lines={lines} onChange={editLines} />
+            </>
+          ) : (
+            <>
+              <div className="mt-2 grid gap-2">
+                {ingredients.map((line, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      className={inputClass}
+                      value={line}
+                      onChange={(event) =>
+                        setIngredients((current) =>
+                          current.map((item, position) =>
+                            position === index ? event.target.value : item,
+                          ),
+                        )
+                      }
+                      placeholder={index === 0 ? "400g chicken thighs" : "1 tbsp olive oil"}
+                    />
+                    <IconButton
+                      label="Remove ingredient"
+                      disabled={ingredients.length === 1}
+                      onClick={() =>
+                        setIngredients((current) =>
+                          current.filter((_, position) => position !== index),
+                        )
+                      }
+                    >
+                      <X size={16} />
+                    </IconButton>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            className="mt-2"
-            onClick={() => setIngredients((current) => [...current, ""])}
-          >
-            <Plus size={14} /> Add ingredient
-          </Button>
+              <Button
+                size="sm"
+                className="mt-2"
+                onClick={() => setIngredients((current) => [...current, ""])}
+              >
+                <Plus size={14} /> Add ingredient
+              </Button>
+            </>
+          )}
         </div>
 
         <Field label="Method *" hint="How to cook it, in your own words.">

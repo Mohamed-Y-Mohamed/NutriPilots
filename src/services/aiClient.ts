@@ -1,8 +1,29 @@
 import { requireSupabase } from "../lib/supabase";
-import type { AiProvider, ChatMessage, MealEstimate, MealSuggestion } from "../types";
+import type {
+  AiProvider,
+  ChatMessage,
+  MealEstimate,
+  MealSuggestion,
+  UsageCallType,
+  UsageState,
+} from "../types";
 
 /** Remembered so Settings can show which function build actually answered. */
 export let lastFunctionBuild: string | null = null;
+
+/**
+ * An Edge Function that answered with an error body.
+ *
+ * It carries the parsed payload as well as the message so a caller that needs
+ * more than the text — the daily allowance, say — can read it without a second
+ * request. Existing callers are unaffected: `reason.message` still works.
+ */
+export class FunctionError extends Error {
+  constructor(message: string, readonly payload: unknown) {
+    super(message);
+    this.name = "FunctionError";
+  }
+}
 
 export interface AiChatResponse {
   /** Version marker from the deployed Edge Function. */
@@ -17,6 +38,8 @@ export interface AiChatResponse {
   suggestions?: MealSuggestion[];
   analysisId?: string | null;
   messageId?: string | null;
+  /** What is left of today's allowance for whichever bucket this call used. */
+  usage?: UsageState;
 }
 
 /**
@@ -65,10 +88,31 @@ export async function invokeFunction<T>(name: string, body: unknown): Promise<T>
       payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error: unknown }).error)
         : `Request failed (${response.status}).`;
-    throw new Error(message);
+    throw new FunctionError(message, payload);
   }
 
   return payload as T;
+}
+
+/**
+ * How much of today's allowance is left, before the user has sent anything.
+ * Read straight from the database rather than through a function: it is a
+ * plain lookup and needs no AI, so it should not cost a function invocation.
+ */
+export async function getAiUsage(callType: UsageCallType): Promise<UsageState> {
+  const { data, error } = await requireSupabase()
+    .rpc("get_ai_usage", { p_call_type: callType })
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const row = data as { used: number; daily_limit: number; resets_at: string };
+  return {
+    callType,
+    used: row.used,
+    dailyLimit: row.daily_limit,
+    resetsAt: row.resets_at,
+  };
 }
 
 export async function sendChatMessage(

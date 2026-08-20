@@ -1,11 +1,19 @@
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { AiError, callAi, parseJsonLoose } from "../_shared/ai.ts";
 import { chatSystemPrompt, PHOTO_SYSTEM_PROMPT } from "../_shared/prompts.ts";
-import { ingredientList, round, text } from "../_shared/coerce.ts";
+import { dishIngredientLines, round, text } from "../_shared/coerce.ts";
+import { labelFor, priceIngredients, totalsFor } from "../_shared/ingredients.ts";
 import { splitSuggestions } from "../_shared/suggestions.ts";
 import { json, preflight } from "../_shared/cors.ts";
 import { FUNCTION_BUILD } from "../_shared/version.ts";
 import { requireUser, userClient } from "../_shared/supabase.ts";
+import {
+  releaseUsage,
+  tryConsumeUsage,
+  UsageLimitError,
+  usageLimitResponse,
+  type UsageState,
+} from "../_shared/usage.ts";
 
 const HISTORY_LIMIT = 12;
 const MAX_MESSAGE_CHARS = 2000;
@@ -15,11 +23,6 @@ interface PhotoEstimate {
   dish_name?: unknown;
   description?: unknown;
   ingredients?: unknown;
-  calories?: unknown;
-  protein_g?: unknown;
-  carbs_g?: unknown;
-  fat_g?: unknown;
-  fibre_g?: unknown;
   confidence?: unknown;
   summary?: unknown;
   is_food?: unknown;
@@ -48,8 +51,15 @@ Deno.serve(async (request) => {
     ? body.message.trim().slice(0, MAX_MESSAGE_CHARS)
     : "";
 
-  if (!message && !imagePath) {
-    return json({ error: "Send a message or a photo." }, 400);
+  // A photo on its own is not a message. Saying what it is costs the user a
+  // second and gives the model the one piece of context a picture cannot carry
+  // — "leftovers, about half of it" changes the answer more than the image does.
+  if (!message) {
+    return json({
+      error: imagePath
+        ? "Add a note saying what this is before sending the photo."
+        : "Type a message first.",
+    }, 400);
   }
 
   // A user may only ever reference a photo inside their own folder. Storage RLS
@@ -58,13 +68,38 @@ Deno.serve(async (request) => {
     return json({ error: "That photo does not belong to you." }, 403);
   }
 
+  // Claimed before anything expensive happens — a user who is out of calls for
+  // today never reaches a model, and never reaches storage either.
+  const callType = imagePath ? "vision" : "chat";
+  let usage: UsageState;
+  try {
+    usage = await tryConsumeUsage(client, callType);
+  } catch (error) {
+    if (error instanceof UsageLimitError) {
+      return usageLimitResponse(
+        error,
+        callType === "vision" ? "photo estimates" : "coach messages",
+      );
+    }
+    console.error(
+      "[ai-chat] usage check failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return json({ error: "Could not check your daily allowance. Please try again." }, 503);
+  }
+
   try {
     return imagePath
-      ? await handlePhoto({ client, userId: user.id, message, imagePath })
-      : await handleChat({ client, userId: user.id, message });
+      ? await handlePhoto({ client, userId: user.id, message, imagePath, usage })
+      : await handleChat({ client, userId: user.id, message, usage });
   } catch (error) {
     if (error instanceof AiError) {
       console.error("[ai-chat] model chain failed", error.message);
+
+      // The chain only throws once every model has been tried and none has
+      // answered, so the user got nothing and nothing was spent on their
+      // behalf. Their call goes back.
+      await releaseUsage(user.id, callType);
 
       // 429 means every model on every provider is out of quota. Anything else
       // is a transient fault the user should simply retry.
@@ -93,10 +128,11 @@ Deno.serve(async (request) => {
 // ---------------------------------------------------------------------------
 
 async function handleChat(
-  { client, userId, message }: {
+  { client, userId, message, usage }: {
     client: ReturnType<typeof userClient>;
     userId: string;
     message: string;
+    usage: UsageState;
   },
 ) {
   const [context, history] = await Promise.all([
@@ -135,6 +171,7 @@ async function handleChat(
     model: result.model,
     attempts: result.attempts,
     messageIds: (inserted ?? []).map((row) => row.id),
+    usage,
   });
 }
 
@@ -144,15 +181,18 @@ async function handleChat(
 // ---------------------------------------------------------------------------
 
 async function handlePhoto(
-  { client, userId, message, imagePath }: {
+  { client, userId, message, imagePath, usage }: {
     client: ReturnType<typeof userClient>;
     userId: string;
     message: string;
     imagePath: string;
+    usage: UsageState;
   },
 ) {
   const download = await client.storage.from("meal-photos").download(imagePath);
   if (download.error || !download.data) {
+    // No model was reached, so the claimed call goes back.
+    await releaseUsage(userId, "vision");
     return json({ error: "That photo could not be read. Please retake it." }, 404);
   }
 
@@ -164,9 +204,7 @@ async function handlePhoto(
     .from("meal-photos")
     .createSignedUrl(imagePath, SIGNED_URL_SECONDS);
 
-  const note = message
-    ? `The user added this note: "${message}"`
-    : "The user added no note.";
+  const note = `The user said: "${message}"`;
 
   let result;
   try {
@@ -178,7 +216,10 @@ async function handlePhoto(
       }],
       image: { mimeType, base64, url: signed.data?.signedUrl },
       json: true,
-      maxTokens: 800,
+      // Fifteen ingredients each carrying an amount and five per-100 figures,
+      // written by a model that reasons first and is charged for the thinking
+      // out of the same budget. 800 truncates it mid-object.
+      maxTokens: 3000,
       temperature: 0.2,
     });
   } finally {
@@ -193,15 +234,42 @@ async function handlePhoto(
   }
 
   const isFood = parsed.is_food !== false;
+
+  // The model judges what is on the plate and how much of it; the nutrition is
+  // worked out here from the app's own food tables, falling back to the model
+  // only for ingredients it does not have. The per-100 figures go back with the
+  // amounts so the user can correct a portion in the chat and watch the totals
+  // follow — no second model call, and nothing is written to the diary until
+  // they say so.
+  const priced = isFood
+    ? await priceIngredients(client, dishIngredientLines(parsed.ingredients))
+    : [];
+
+  // Food with nothing itemised would total zero, and a zero-calorie card is
+  // worse than no card: it looks like an answer and logs a meal that never
+  // happened. Say the photo could not be read instead.
+  if (isFood && priced.length === 0) {
+    console.error(
+      `[ai-chat] photo returned no usable ingredients from ${result.provider}/${result.model}:`,
+      result.text.slice(0, 300),
+    );
+    return json({
+      error: "The AI could not make out what was on the plate. Please try a clearer photo.",
+    }, 502);
+  }
+
+  const totals = totalsFor(priced);
+
   const estimate = {
     dish_name: text(parsed.dish_name, "Meal", 120),
     description: text(parsed.description, "", 300),
-    ingredients: ingredientList(parsed.ingredients),
-    calories: round(parsed.calories, 0),
-    protein_g: round(parsed.protein_g, 1),
-    carbs_g: round(parsed.carbs_g, 1),
-    fat_g: round(parsed.fat_g, 1),
-    fibre_g: round(parsed.fibre_g, 1),
+    ingredients: priced.map(labelFor),
+    lines: priced,
+    calories: round(totals.calories, 0),
+    protein_g: round(totals.protein, 1),
+    carbs_g: round(totals.carbs, 1),
+    fat_g: round(totals.fat, 1),
+    fibre_g: round(totals.fibre, 1),
     confidence: confidence(parsed.confidence),
     summary: text(parsed.summary, "Visual estimate; portion size may vary.", 500),
     is_food: isFood,
@@ -217,7 +285,7 @@ async function handlePhoto(
       {
         user_id: userId,
         role: "user",
-        content: message || "Estimate the nutrition in this meal.",
+        content: message,
         image_path: null,
       },
       {
@@ -260,6 +328,7 @@ async function handlePhoto(
     estimate: isFood ? estimate : null,
     analysisId: analysis?.id ?? null,
     messageId: assistantId,
+    usage,
   });
 }
 

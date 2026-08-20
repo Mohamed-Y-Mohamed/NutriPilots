@@ -68,6 +68,67 @@ function assertSelfContained(name, bundle, entry) {
   }
 }
 
+/**
+ * Fails the build if the bundle imports the same name twice.
+ *
+ * External imports are hoisted verbatim and de-duplicated by exact text, so two
+ * shared modules reaching for the same symbol in different words — one
+ * `import type { SupabaseClient }`, one `import { createClient, type
+ * SupabaseClient }` — both survive and Deno refuses to load the file. Nothing
+ * about the source looks wrong, so the failure only appears once deployed.
+ */
+function assertNoDuplicateImports(name, externals) {
+  const seen = new Set();
+  const duplicates = [];
+
+  for (const line of externals) {
+    const clause = line.match(/^import\s+(?:type\s+)?\{([^}]+)\}/);
+    if (!clause) continue;
+    for (const part of clause[1].split(",")) {
+      const symbol = part.replace(/^\s*type\s+/, "").split(/\s+as\s+/).pop().trim();
+      if (!symbol) continue;
+      if (seen.has(symbol)) duplicates.push(symbol);
+      seen.add(symbol);
+    }
+  }
+
+  if (duplicates.length) {
+    throw new Error(
+      `${name}.ts would not load: ${[...new Set(duplicates)].join(", ")} imported twice. ` +
+        `Two shared modules import it in different words — make them match, or have one ` +
+        `derive the type from the other (ReturnType<typeof userClient>).`,
+    );
+  }
+}
+
+/**
+ * Fails the build if the bundle declares the same name twice at top level.
+ *
+ * Inlining concatenates modules into one scope, so a helper that two of them
+ * define privately — `nonNegative` in both `_shared/ingredients.ts` and
+ * `submit-food` — becomes a duplicate declaration and Deno refuses to load the
+ * file. The source is fine, every test passes, and the only symptom is a
+ * BOOT_ERROR after deploying. That is precisely how it reached production once.
+ */
+function assertNoDuplicateDeclarations(name, bundle) {
+  const declaration = /^(?:export\s+)?(?:async\s+)?(?:function|class|const|let|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm;
+
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const [, symbol] of bundle.matchAll(declaration)) {
+    if (seen.has(symbol)) duplicates.add(symbol);
+    seen.add(symbol);
+  }
+
+  if (duplicates.size) {
+    throw new Error(
+      `${name}.ts would not boot: ${[...duplicates].join(", ")} declared twice. ` +
+        `Two inlined modules define it privately — move it into one shared module ` +
+        `and import it, or rename one.`,
+    );
+  }
+}
+
 const targets = readdirSync(functionsDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
   .map((entry) => entry.name);
@@ -103,6 +164,8 @@ for (const name of targets) {
   const bundle = `${body.replace(/\n{4,}/g, "\n\n\n")}\n`;
 
   assertSelfContained(name, bundle, entry);
+  assertNoDuplicateImports(name, externals);
+  assertNoDuplicateDeclarations(name, bundle);
   writeFileSync(join(outDir, `${name}.ts`), bundle);
   console.log(`  ${name}.ts`);
 }
@@ -119,10 +182,18 @@ writeManualSql();
  */
 function writeManualSql() {
   const migrationsDir = join(root, "supabase", "migrations");
-  const file = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort().at(-1);
-  const sql = readFileSync(join(migrationsDir, file), "utf8");
+  const files = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort();
 
   const marker = "-- Storage: meal-photos (private, one folder per user)";
+
+  // The base migration is found by its content, not by being the newest file:
+  // every later migration is a follow-up that has no storage block, and picking
+  // the newest would have made this throw the moment a second one was added.
+  const file = files.find((n) => readFileSync(join(migrationsDir, n), "utf8").includes(marker));
+  if (!file) throw new Error("No migration contains the storage block.");
+
+  const sql = readFileSync(join(migrationsDir, file), "utf8");
+
   const start = sql.lastIndexOf("-- ---", sql.indexOf(marker));
   const end = sql.indexOf('-- "My foods"');
   const endBlock = sql.lastIndexOf("-- ---", end);
@@ -163,6 +234,26 @@ function writeManualSql() {
   );
 
   console.log("✓ SQL written to supabase/manual/01-schema.sql and 02-storage.sql");
+
+  // Follow-up migrations go to supaUpdate/ ready to paste into the SQL editor.
+  // Generated rather than hand-copied for the same reason as everything else
+  // here: a copy that can drift is a copy that eventually will.
+  const updateDir = join(root, "supaUpdate");
+  mkdirSync(updateDir, { recursive: true });
+
+  for (const name of files.filter((n) => n !== file)) {
+    writeFileSync(
+      join(updateDir, name),
+      note(
+        `NutriPilot update — ${name.replace(/^\d+_/, "").replace(/\.sql$/, "")}`,
+        "GENERATED from supabase/migrations/ — do not edit here.\n" +
+          "Paste the whole file into the Supabase SQL editor and run it.\n" +
+          "Idempotent: safe to run more than once.\n" +
+          "Run supabase/manual/01-schema.sql first if this is a fresh project.",
+      ) + readFileSync(join(migrationsDir, name), "utf8").trim() + "\n",
+    );
+    console.log(`✓ SQL written to supaUpdate/${name}`);
+  }
 }
 
 /** Hoists external imports and drops `_shared` ones, which are inlined instead. */

@@ -204,6 +204,215 @@ try {
     console.log(`      verdict ${response.review?.verdict}`);
   });
 
+  // -------------------------------------------------------------------------
+  // Daily AI allowances
+  // -------------------------------------------------------------------------
+
+  await check("a new user starts with the free tier's allowances", async () => {
+    const [chat] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "chat" },
+    });
+    const [vision] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "vision" },
+    });
+    assert(chat?.daily_limit === 20, `chat limit was ${chat?.daily_limit}, expected 20`);
+    assert(vision?.daily_limit === 5, `vision limit was ${vision?.daily_limit}, expected 5`);
+    assert(new Date(Date.parse(chat.resets_at)).getUTCHours() === 0,
+      `the reset instant is not midnight UTC: ${chat.resets_at}`);
+    console.log(`      chat ${chat.used}/20, photos ${vision.used}/5`);
+  });
+
+  await check("the coach's calls were actually counted", async () => {
+    // Two coach questions and one photo have been asked by this point.
+    const [chat] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "chat" },
+    });
+    const [vision] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "vision" },
+    });
+    assert(chat.used >= 2, `chat counted ${chat.used}, expected at least 2`);
+    assert(vision.used >= 1, `photos counted ${vision.used}, expected at least 1`);
+    console.log(`      chat ${chat.used}/20, photos ${vision.used}/5`);
+  });
+
+  await check("nobody can refund themselves with a signed-in session", async () => {
+    const { status, body } = await restRaw("/rest/v1/rpc/release_ai_usage", {
+      method: "POST",
+      body: { p_user_id: userId, p_call_type: "chat" },
+    });
+    // 404 is PostgREST hiding a function this role may not execute.
+    assert(status === 404 || status === 403,
+      `release_ai_usage answered ${status} ${JSON.stringify(body).slice(0, 160)}`);
+  });
+
+  await check("nobody can read the plan limit helper directly", async () => {
+    const { status } = await restRaw("/rest/v1/rpc/ai_daily_limit", {
+      method: "POST",
+      body: { p_plan: "free", p_call_type: "chat" },
+    });
+    assert(status === 404 || status === 403, `ai_daily_limit answered ${status}`);
+  });
+
+  await check("nobody can raise their own daily limit", async () => {
+    await restRaw("/rest/v1/ai_plan_limits?plan=eq.free&call_type=eq.chat", {
+      method: "PATCH",
+      body: { daily_limit: 999999 },
+    });
+    const [chat] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "chat" },
+    });
+    assert(chat.daily_limit === 20, `the limit became ${chat.daily_limit} after a client write`);
+  });
+
+  await check("nobody can grant themselves premium", async () => {
+    await restRaw("/rest/v1/user_plans", {
+      method: "POST",
+      body: { user_id: userId, plan: "premium" },
+    });
+    const [chat] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "chat" },
+    });
+    assert(chat.daily_limit === 20, `the limit became ${chat.daily_limit} after a self-granted plan`);
+  });
+
+  await check("nobody can wipe their own counters", async () => {
+    const read = async () =>
+      (await rest("/rest/v1/rpc/get_ai_usage", { method: "POST", body: { p_call_type: "chat" } }))[0].used;
+
+    const before = await read();
+    await restRaw("/rest/v1/ai_usage_daily?call_type=eq.chat", { method: "DELETE" });
+    await restRaw("/rest/v1/ai_usage_daily?call_type=eq.chat", {
+      method: "PATCH",
+      body: { count: 0 },
+    });
+    const after = await read();
+    assert(after === before, `the counter moved from ${before} to ${after} on a client write`);
+  });
+
+  await check("two simultaneous requests cannot both take the last call", async () => {
+    // Put the counter one below the cap using the service role, then race it.
+    await serviceWrite(
+      `/rest/v1/ai_usage_daily?user_id=eq.${userId}&call_type=eq.chat`,
+      { count: 19 },
+    );
+    const races = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        rest("/rest/v1/rpc/try_increment_ai_usage", {
+          method: "POST",
+          body: { p_call_type: "chat" },
+        })),
+    );
+    const allowed = races.filter(([row]) => row.allowed).length;
+    assert(allowed === 1, `${allowed} of 8 simultaneous requests were allowed, expected 1`);
+    console.log("      1 of 8 allowed; the other 7 were refused");
+  });
+
+  await check("the call after the cap is refused without touching a model", async () => {
+    const [row] = await rest("/rest/v1/rpc/try_increment_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "chat" },
+    });
+    assert(row.allowed === false, "a call past the cap was allowed");
+    assert(row.used === 20, `used was ${row.used}, expected it to stay at 20`);
+  });
+
+  await check("the coach says so rather than calling a model", async () => {
+    const { status, body } = await callFunctionRaw("ai-chat", {
+      message: "How much protein is in an egg?",
+    });
+    assert(status === 429, `expected 429, got ${status}`);
+    assert(body.code === "usage_limit", `expected usage_limit, got ${body.code}`);
+    assert(body.usage?.dailyLimit === 20, "the rejection did not carry the allowance");
+    console.log(`      "${String(body.error).slice(0, 88)}"`);
+  });
+
+  await check("photos still work when the coach's allowance is gone", async () => {
+    const [vision] = await rest("/rest/v1/rpc/get_ai_usage", {
+      method: "POST",
+      body: { p_call_type: "vision" },
+    });
+    assert(vision.used < vision.daily_limit, "the vision bucket was drained by chat");
+  });
+
+  // -------------------------------------------------------------------------
+  // Describe a dish instead of photographing it
+  // -------------------------------------------------------------------------
+
+  await check("estimate refuses an empty description before spending a call", async () => {
+    const { status } = await callFunctionRaw("submit-food", { mode: "estimate", description: "  " });
+    assert(status === 400, `expected 400, got ${status}`);
+  });
+
+  await check("estimate refuses an over-long description", async () => {
+    const { status } = await callFunctionRaw("submit-food", {
+      mode: "estimate",
+      description: "rice ".repeat(400),
+    });
+    assert(status === 400, `expected 400, got ${status}`);
+  });
+
+  await check("estimate turns a typed dish into a reviewable recipe draft", async () => {
+    // The chat bucket is exhausted by now, so hand this one call back first.
+    await serviceCall("/rest/v1/rpc/release_ai_usage", { p_user_id: userId, p_call_type: "chat" });
+
+    const response = await callFunction("submit-food", {
+      mode: "estimate",
+      description:
+        "Chicken and rice traybake: 400g chicken thighs, 2 cups basmati rice, " +
+        "1 tbsp olive oil, 1 onion, a handful of spinach. Serves 4.",
+    });
+
+    assert(response.recognised === true, `not recognised: ${response.error}`);
+    const draft = response.draft;
+    assert(draft, "no draft returned");
+
+    // The recipe review card renders RecipeScan["draft"]; a missing field breaks it.
+    for (const field of [
+      "name", "description", "servings", "prep_time_minutes", "cook_time_minutes",
+      "instructions", "cuisine", "calories_per_serving", "protein_per_serving_g",
+      "carbs_per_serving_g", "fat_per_serving_g", "fibre_per_serving_g",
+      "ingredients", "dietary_tags",
+    ]) {
+      assert(field in draft, `the draft is missing ${field}`);
+    }
+
+    assert(draft.servings === 4, `read ${draft.servings} servings, expected 4`);
+    assert(Array.isArray(draft.ingredients) && draft.ingredients.length >= 3,
+      `only ${draft.ingredients?.length} ingredient lines`);
+    assert(draft.calories_per_serving > 150 && draft.calories_per_serving < 2000,
+      `${draft.calories_per_serving} kcal per serving is not plausible`);
+    assert(draft.protein_per_serving_g > 10,
+      `${draft.protein_per_serving_g}g protein is too low for 400g of chicken`);
+    assert(response.review?.fingerprint,
+      "no fingerprint, so saving it would pay for a second AI call");
+
+    console.log(
+      `      "${draft.name}" — ${draft.calories_per_serving} kcal/serving, ` +
+      `P${draft.protein_per_serving_g} C${draft.carbs_per_serving_g} F${draft.fat_per_serving_g}`,
+    );
+    console.log(
+      `      ${response.matchedFromDatabase}/${response.totalIngredients} ingredients matched ` +
+      `your own database`,
+    );
+    for (const item of draft.ingredients) console.log(`        · ${item}`);
+  });
+
+  await check("estimate refuses something that is not food", async () => {
+    await serviceCall("/rest/v1/rpc/release_ai_usage", { p_user_id: userId, p_call_type: "chat" });
+    const response = await callFunction("submit-food", {
+      mode: "estimate",
+      description: "a chair made of oak with four legs and a cushion",
+    });
+    assert(response.recognised === false,
+      `it accepted furniture as a dish: ${JSON.stringify(response.draft ?? {}).slice(0, 160)}`);
+  });
+
   await check("submit-food refuses an incomplete payload without calling the AI", async () => {
     const { status, body } = await callFunctionRaw("submit-food", {
       type: "ingredient",
@@ -306,6 +515,58 @@ async function rest(path, { method = "GET", body, headers = {} } = {}) {
   const text = await response.text();
   if (!response.ok) throw new Error(`${method} ${path} → ${response.status} ${text.slice(0, 200)}`);
   return text ? JSON.parse(text) : [];
+}
+
+async function restRaw(path, { method = "GET", body, headers = {} } = {}) {
+  const response = await fetch(`${URL}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: ANON,
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = { raw: text };
+  }
+  return { status: response.status, body: parsed };
+}
+
+/** A write only the server may make, used to set up a state worth testing. */
+async function serviceWrite(path, body) {
+  const response = await fetch(`${URL}${path}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      apikey: serviceKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`service write ${path} → ${response.status} ${await response.text()}`);
+  }
+}
+
+async function serviceCall(path, body) {
+  const response = await fetch(`${URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      apikey: serviceKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`service call ${path} → ${response.status} ${await response.text()}`);
+  }
 }
 
 async function serviceRequest(path) {

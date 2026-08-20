@@ -323,18 +323,28 @@ describe("reasoning models", () => {
   it("asks a reasoning model not to think, and leaves other models alone", async () => {
     mockFetchSequence([
       { status: 429, body: rateLimited },
-      { status: 429, body: rateLimited },
       { status: 200, body: openAiReply("Answer from the reasoning model.") },
     ]);
 
     await callAi(request);
 
-    // First two are plain instruct models.
-    expect(calls[0].body.reasoning_effort).toBeUndefined();
-    expect(calls[1].body.reasoning_effort).toBeUndefined();
-    // The third is qwen, which needs the flags.
-    expect(calls[2].body.reasoning_effort).toBe("none");
-    expect(calls[2].body.reasoning_format).toBe("hidden");
+    // Positions are read from the chain rather than hardcoded, so retiring a
+    // model reorders the list without silently inverting what this asserts.
+    const flagged = CHAT_MODELS.findIndex((model) => model.reasoning);
+    expect(flagged).toBeGreaterThan(-1);
+
+    expect(calls[flagged].body.reasoning_effort).toBe("none");
+    expect(calls[flagged].body.reasoning_format).toBe("hidden");
+    // Its neighbours are plain instruct models and must not be sent the flags.
+    expect(calls[flagged - 1].body.reasoning_effort).toBeUndefined();
+  });
+
+  it("no longer carries a model Groq has retired", () => {
+    // Both sat in the Groq block and 404'd on every request until removed.
+    const retired = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+    for (const chain of [CHAT_MODELS, VERIFY_MODELS]) {
+      expect(chain.filter((model) => retired.includes(model.model))).toEqual([]);
+    }
   });
 
   it("never shows the user a leaked <think> block", async () => {

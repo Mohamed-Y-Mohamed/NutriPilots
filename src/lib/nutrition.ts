@@ -1,6 +1,7 @@
 import type {
   DailyTargets,
   DiaryEntry,
+  EstimateLine,
   Ingredient,
   Recipe,
   UserProfile,
@@ -156,4 +157,45 @@ export function macroCalorieMismatch(
 
 export function round1(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+/**
+ * What a list of ingredients adds up to. Each line carries its nutrition per
+ * 100g, so changing an amount is a multiplication rather than another trip to
+ * the server — which is what lets a wrong portion be corrected in place.
+ */
+export function totalsForLines(lines: EstimateLine[]): DiaryTotals {
+  return lines.reduce<DiaryTotals>(
+    (sum, line) => {
+      const scale = Math.max(0, line.amount) / 100;
+      return {
+        calories: sum.calories + line.caloriesPer100 * scale,
+        protein: sum.protein + line.proteinPer100 * scale,
+        carbs: sum.carbs + line.carbsPer100 * scale,
+        fat: sum.fat + line.fatPer100 * scale,
+        fibre: sum.fibre + line.fibrePer100 * scale,
+      };
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0 },
+  );
+}
+
+/** An ingredient from the food tables, restated per 100g so it can join a list. */
+export function lineFromIngredient(food: Ingredient, amount = 100): EstimateLine {
+  const basis = Number(food.basis_quantity) > 0 ? Number(food.basis_quantity) : 100;
+  const per100 = (value: number | null) => (Number(value) > 0 ? (Number(value) * 100) / basis : 0);
+
+  return {
+    name: food.name,
+    amount,
+    unit: food.basis_unit === "ml" ? "ml" : "g",
+    // The user picked this one and set the amount, so nothing here is a guess.
+    estimatedAmount: false,
+    source: "database",
+    caloriesPer100: per100(food.calories_kcal),
+    proteinPer100: per100(food.protein_g),
+    carbsPer100: per100(food.carbohydrates_g),
+    fatPer100: per100(food.fat_g),
+    fibrePer100: per100(food.fibre_g),
+  };
 }

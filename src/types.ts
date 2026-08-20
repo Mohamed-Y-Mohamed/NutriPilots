@@ -187,11 +187,36 @@ export interface RecentFood {
   userRecipeId: string | null;
 }
 
+/**
+ * One ingredient of an estimate: how much of it, and what 100g of it contains.
+ *
+ * The per-100 figures are what make the estimate editable. Correcting an amount
+ * rescales them on the spot, so a wrong portion costs a keystroke rather than
+ * another trip to a model.
+ */
+export interface EstimateLine {
+  name: string;
+  /** Grams, or millilitres when the food is measured that way. */
+  amount: number;
+  unit: "g" | "ml";
+  /** The amount was judged from the photo rather than counted or told. */
+  estimatedAmount: boolean;
+  /** Whether the nutrition came from the app's food tables or from the model. */
+  source: "database" | "ai_estimate";
+  caloriesPer100: number;
+  proteinPer100: number;
+  carbsPer100: number;
+  fatPer100: number;
+  fibrePer100: number;
+}
+
 export interface MealEstimate {
   dish_name: string;
   description: string;
   /** What the calorie figure is based on, with assumed amounts. */
   ingredients?: string[];
+  /** The same ingredients, itemised, so the amounts can be corrected. */
+  lines?: EstimateLine[];
   calories: number;
   protein_g: number;
   carbs_g: number;
@@ -200,6 +225,22 @@ export interface MealEstimate {
   confidence: "low" | "medium" | "high";
   summary: string;
   is_food: boolean;
+}
+
+/**
+ * The three daily AI allowances, budgeted apart. A photo costs several times
+ * what a message costs, and checking a saved food is a third thing again — one
+ * shared counter would let a few photos, or a batch of new foods, swallow a
+ * whole day's coaching.
+ */
+export type UsageCallType = "chat" | "vision" | "verify";
+
+export interface UsageState {
+  callType: UsageCallType;
+  used: number;
+  dailyLimit: number;
+  /** Midnight UTC tomorrow, as an ISO instant. */
+  resetsAt: string;
 }
 
 export type AiProvider = "groq" | "openrouter";
@@ -265,6 +306,16 @@ export interface RecipeScan {
   };
   estimatedFields: string[];
   review: FoodReview;
+  /**
+   * Set when the draft came from a typed description: how many of its
+   * ingredients were priced from the app's own food tables rather than from the
+   * model's estimate. Worth showing — it is the difference between a number
+   * grounded in real data and a guess.
+   */
+  matchedFromDatabase?: number;
+  totalIngredients?: number;
+  /** Itemised ingredients, so an amount can be corrected without a new call. */
+  lines?: EstimateLine[];
   error?: string;
 }
 

@@ -59,6 +59,20 @@ export async function scanRecipePhoto(imagePath: string): Promise<RecipeScan> {
 }
 
 /**
+ * The no-photo route to the same draft: the user types what they ate and the
+ * server works out the ingredients and per-serving macros.
+ *
+ * Returns the identical shape `scanRecipePhoto` does, so everything downstream
+ * — the review card, the save, the offer to the shared database — is unchanged.
+ */
+export async function estimateDishFromText(description: string): Promise<RecipeScan> {
+  return invokeFunction<RecipeScan>("submit-food", {
+    mode: "estimate",
+    description,
+  });
+}
+
+/**
  * Offers a saved food to the shared reference tables. Only AI-approved entries
  * are accepted there, and the user's own copy is kept regardless — so this is
  * fire-and-forget: a failure must never look like a failure to save.

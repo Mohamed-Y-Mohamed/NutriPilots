@@ -9,10 +9,15 @@ import {
   Skeleton,
   useTypewriter,
 } from "../components/ui";
+import { IngredientLines } from "../components/IngredientLines";
+import { formatTimeUntil } from "../lib/dates";
+import { round1, totalsForLines } from "../lib/nutrition";
 import { prepareImage } from "../lib/image";
 import { capturePhoto, isNative } from "../lib/native";
 import {
   clearChatHistory,
+  FunctionError,
+  getAiUsage,
   loadChatHistory,
   sendChatMessage,
   uploadMealPhoto,
@@ -25,7 +30,23 @@ import {
   type MealEstimate,
   type MealName,
   type MealSuggestion,
+  type EstimateLine,
+  type UsageState,
 } from "../types";
+
+/** Today's remaining calls, per bucket. Null until the first read lands. */
+interface UsageAllowance {
+  chat: UsageState | null;
+  vision: UsageState | null;
+}
+
+/** Replaces just the bucket the server reported on, leaving the other alone. */
+function withUsage(usage: UsageState) {
+  return (current: UsageAllowance): UsageAllowance => ({
+    ...current,
+    [usage.callType]: usage,
+  });
+}
 
 const SUGGESTIONS = [
   "I have been the same weight for 3 weeks — what should I change?",
@@ -46,6 +67,7 @@ export function CoachPage() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
+  const [usage, setUsage] = useState<UsageAllowance>({ chat: null, vision: null });
 
   // Only a reply that arrived in this session is typed out. Replaying the
   // whole history letter by letter on every visit would be infuriating.
@@ -59,6 +81,15 @@ export function CoachPage() {
       .then(setMessages)
       .catch(() => setMessages([]))
       .finally(() => setLoadingHistory(false));
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([getAiUsage("chat"), getAiUsage("vision")])
+      .then(([chat, vision]) => setUsage({ chat, vision }))
+      .catch(() => {
+        // The remaining-calls line is a courtesy, not a requirement. The coach
+        // still works without it, and the server enforces the limit regardless.
+      });
   }, []);
 
   useEffect(() => {
@@ -94,7 +125,8 @@ export function CoachPage() {
   const send = async (event?: FormEvent, overrideText?: string) => {
     event?.preventDefault();
     const text = (overrideText ?? prompt).trim();
-    if (sending || (!text && !photo)) return;
+    // Every message carries text; the photo is the optional part.
+    if (sending || !text) return;
 
     setSending(true);
     setError(null);
@@ -103,7 +135,7 @@ export function CoachPage() {
     const optimistic: ChatMessage = {
       id: `local-${crypto.randomUUID()}`,
       role: "user",
-      text: text || "Estimate the nutrition in this meal.",
+      text,
       imagePreviewUrl: photo?.previewUrl,
       createdAt: new Date().toISOString(),
     };
@@ -129,13 +161,27 @@ export function CoachPage() {
         },
       ]);
       setAnimatingId(id);
+      if (response.usage) setUsage(withUsage(response.usage));
 
       setPhoto(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (reason) {
       const message =
         reason instanceof Error ? reason.message : "The coach could not answer that.";
-      if (/today's ai limit/i.test(message)) setLimitReached(true);
+
+      // Three different limits, all of them temporary rather than broken:
+      // "rate_limit" is a few seconds, "usage_limit" is this user's allowance
+      // for the day, and "daily_limit" is every AI provider out of quota at
+      // once. All read better as a warning than as a red error. The server
+      // words each one, so the only job here is the tone and the counts.
+      const payload =
+        reason instanceof FunctionError
+          ? (reason.payload as { code?: string; usage?: UsageState } | null)
+          : null;
+      if (payload?.code && ["rate_limit", "usage_limit", "daily_limit"].includes(payload.code)) {
+        setLimitReached(true);
+        if (payload.usage) setUsage(withUsage(payload.usage));
+      }
       setError(message);
       setMessages((current) => current.filter((item) => item.id !== optimistic.id));
       setPrompt(text);
@@ -170,6 +216,8 @@ export function CoachPage() {
           </Button>
         )}
       </div>
+
+      <UsageBanner usage={usage} />
 
       <div
         ref={scrollRef}
@@ -220,7 +268,9 @@ export function CoachPage() {
               alt="Meal to analyse"
               className="size-10 rounded-lg object-cover"
             />
-            <span className="flex-1 text-[12px] text-ink-muted">Photo ready to analyse</span>
+            <span className="flex-1 text-[12px] text-ink-muted">
+              {prompt.trim() ? "Photo ready to analyse" : "Say what this is to send it"}
+            </span>
             <IconButton label="Remove photo" onClick={() => setPhoto(null)}>
               <X size={16} />
             </IconButton>
@@ -264,14 +314,14 @@ export function CoachPage() {
           <input
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder={photo ? "Add a note…" : "Ask about food…"}
+            placeholder={photo ? "Say what this is…" : "Ask about food…"}
             enterKeyHint="send"
             className="min-w-0 flex-1 bg-transparent px-1 text-[15px] outline-none"
           />
 
           <button
             type="submit"
-            disabled={sending || (!prompt.trim() && !photo)}
+            disabled={sending || !prompt.trim()}
             aria-label="Send"
             className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white transition-transform active:scale-90 disabled:opacity-35 disabled:active:scale-100"
           >
@@ -280,6 +330,38 @@ export function CoachPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+/**
+ * What is left of today's two allowances. It stays out of the way until it
+ * matters: the numbers are quiet grey, and the whole line is absent entirely
+ * until the counts have actually been read.
+ */
+function UsageBanner({ usage }: { usage: UsageAllowance }) {
+  if (!usage.chat && !usage.vision) return null;
+
+  // Both buckets reset at the same midnight, so one countdown covers them.
+  const resetsAt = usage.chat?.resetsAt ?? usage.vision?.resetsAt;
+
+  return (
+    <p className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line bg-surface px-3 py-2 text-[11px] text-ink-muted">
+      {usage.chat && <Remaining state={usage.chat} noun="messages" />}
+      {usage.vision && <Remaining state={usage.vision} noun="photos" />}
+      {resetsAt && (
+        <span className="ml-auto text-ink-faint">Resets in {formatTimeUntil(resetsAt)}</span>
+      )}
+    </p>
+  );
+}
+
+function Remaining({ state, noun }: { state: UsageState; noun: string }) {
+  const left = Math.max(state.dailyLimit - state.used, 0);
+  return (
+    <span>
+      <strong className={cx("font-medium", left === 0 ? "text-warn" : "text-ink")}>{left}</strong>
+      {" "}of {state.dailyLimit} {noun} left today
+    </span>
   );
 }
 
@@ -412,15 +494,33 @@ function EstimateCard({
   onLogged: () => void;
 }) {
   const { logFood, date, refresh } = useAppData();
+  const [lines, setLines] = useState<EstimateLine[]>(estimate.lines ?? []);
+  const [meal, setMeal] = useState<MealName>("Lunch");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // With an itemised estimate the totals are never stored, only derived — so a
+  // corrected amount, a removed ingredient and an added one all land in the
+  // same place and cannot drift apart from the figure that gets logged.
+  const itemised = lines.length > 0;
+  const totals = itemised
+    ? totalsForLines(lines)
+    : {
+      calories: estimate.calories,
+      protein: estimate.protein_g,
+      carbs: estimate.carbs_g,
+      fat: estimate.fat_g,
+      fibre: estimate.fibre_g,
+    };
+
+  // Older estimates predate the itemised breakdown, so their macros stay
+  // directly editable rather than losing the ability to be corrected at all.
   const [values, setValues] = useState({
     calories: estimate.calories,
     protein: estimate.protein_g,
     carbs: estimate.carbs_g,
     fat: estimate.fat_g,
   });
-  const [meal, setMeal] = useState<MealName>("Lunch");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const set = (key: keyof typeof values, raw: string) => {
     const number = Number(raw);
@@ -435,21 +535,25 @@ function EstimateCard({
     setBusy(true);
     setError(null);
     try {
+      const logged = itemised ? totals : { ...values, fibre: estimate.fibre_g };
       await logFood({
         name: estimate.dish_name || "Photo estimate",
         amount: 1,
         unit: "meal",
         meal,
-        calories: values.calories,
-        protein: values.protein,
-        carbs: values.carbs,
-        fat: values.fat,
-        fibre: estimate.fibre_g,
+        calories: round1(logged.calories),
+        protein: round1(logged.protein),
+        carbs: round1(logged.carbs),
+        fat: round1(logged.fat),
+        fibre: round1(logged.fibre),
         date,
         source: "ai_photo",
-        notes: [estimate.description, (estimate.ingredients ?? []).join(", ")]
-          .filter(Boolean)
-          .join(" — ") || null,
+        // What the figure was actually based on, as it stood when it was
+        // logged — including anything the user corrected, added or removed.
+        notes: [
+          estimate.description,
+          (itemised ? lines.map((line) => `${Math.round(line.amount)}${line.unit} ${line.name}`) : estimate.ingredients ?? []).join(", "),
+        ].filter(Boolean).join(" — ") || null,
       });
       onLogged();
       // Today's totals were computed before this entry existed.
@@ -461,6 +565,9 @@ function EstimateCard({
     }
   };
 
+  // Once it is logged the whole card goes and one quiet line takes its place.
+  // Leaving an editor on screen that no longer edits anything is clutter, and
+  // it invites a second tap that would log the meal twice.
   if (logged) {
     return (
       <p className="mt-3 flex items-center gap-1.5 border-t border-line pt-3 text-[12px] font-medium text-ok">
@@ -471,34 +578,69 @@ function EstimateCard({
 
   return (
     <div className="animate-fade-in mt-3 border-t border-line pt-3">
-      {(estimate.ingredients?.length ?? 0) > 0 && (
-        <div className="mb-2.5">
-          <p className="mb-1 text-[11px] font-medium text-ink-muted">
-            Based on these ingredients
+      {itemised ? (
+        <>
+          <p className="mb-1.5 text-[11px] text-ink-muted">
+            Change an amount if it looks wrong — the totals follow. Add anything missing, or
+            remove what is not there.
           </p>
-          <ul className="grid gap-0.5 text-[11px] leading-relaxed text-ink-muted">
-            {estimate.ingredients!.map((item) => (
-              <li key={item} className="flex gap-1.5">
-                <span aria-hidden="true" className="text-ink-faint">
-                  &middot;
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
+
+          <IngredientLines lines={lines} onChange={setLines} />
+
+          <dl className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line pt-2.5 text-[11px] text-ink-muted">
+            <div className="flex items-baseline gap-1">
+              <dt className="sr-only">Calories</dt>
+              <dd className="text-[15px] font-semibold tabular-nums text-ink">
+                {Math.round(totals.calories)}
+              </dd>
+              <span>kcal</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <dt>protein</dt>
+              <dd className="font-medium tabular-nums text-ink">{round1(totals.protein)}g</dd>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <dt>carbs</dt>
+              <dd className="font-medium tabular-nums text-ink">{round1(totals.carbs)}g</dd>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <dt>fat</dt>
+              <dd className="font-medium tabular-nums text-ink">{round1(totals.fat)}g</dd>
+            </div>
+          </dl>
+        </>
+      ) : (
+        <>
+          {(estimate.ingredients?.length ?? 0) > 0 && (
+            <div className="mb-2.5">
+              <p className="mb-1 text-[11px] font-medium text-ink-muted">
+                Based on these ingredients
+              </p>
+              <ul className="grid gap-0.5 text-[11px] leading-relaxed text-ink-muted">
+                {estimate.ingredients!.map((item) => (
+                  <li key={item} className="flex gap-1.5">
+                    <span aria-hidden="true" className="text-ink-faint">
+                      &middot;
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <p className="mb-2 text-[11px] text-ink-muted">
+            Check these before logging — edit anything that looks wrong.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <MacroInput label="kcal" value={values.calories} onChange={(v) => set("calories", v)} />
+            <MacroInput label="protein" value={values.protein} onChange={(v) => set("protein", v)} />
+            <MacroInput label="carbs" value={values.carbs} onChange={(v) => set("carbs", v)} />
+            <MacroInput label="fat" value={values.fat} onChange={(v) => set("fat", v)} />
+          </div>
+        </>
       )}
-
-      <p className="mb-2 text-[11px] text-ink-muted">
-        Check these before logging — edit anything that looks wrong.
-      </p>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <MacroInput label="kcal" value={values.calories} onChange={(v) => set("calories", v)} />
-        <MacroInput label="protein" value={values.protein} onChange={(v) => set("protein", v)} />
-        <MacroInput label="carbs" value={values.carbs} onChange={(v) => set("carbs", v)} />
-        <MacroInput label="fat" value={values.fat} onChange={(v) => set("fat", v)} />
-      </div>
 
       {error && (
         <Alert tone="error" className="mt-2">
@@ -517,8 +659,13 @@ function EstimateCard({
             <option key={option}>{option}</option>
           ))}
         </select>
-        <Button variant="primary" size="sm" onClick={() => void log()} disabled={busy}>
-          <Check size={15} /> {busy ? "Adding…" : "Confirm & log"}
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => void log()}
+          disabled={busy || (itemised && lines.length === 0)}
+        >
+          <Check size={15} /> {busy ? "Adding…" : "Add to diary"}
         </Button>
       </div>
 
@@ -535,11 +682,11 @@ function EstimateCard({
  * the diary — the AI never writes one on its own.
  */
 function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
-  // Most replies name a single meal. Leaving that one collapsed hid the only
-  // way to save it behind a tap nobody knew to make, so it opens straight away.
-  const [open, setOpen] = useState<string | null>(
-    suggestions.length === 1 ? suggestions[0].name : null,
-  );
+  // Every named meal opens with its numbers showing. Collapsing them hid the
+  // only way to save a meal behind a tap nobody knew to make, and the whole
+  // point of the card is that the user checks the figures before logging —
+  // which they cannot do if the figures are not on screen.
+  const [closed, setClosed] = useState<string[]>([]);
   const [logged, setLogged] = useState<string[]>([]);
 
   return (
@@ -552,7 +699,7 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
       <div className="grid gap-2">
         {suggestions.map((suggestion) => {
           const isLogged = logged.includes(suggestion.name);
-          const isOpen = open === suggestion.name;
+          const isOpen = !closed.includes(suggestion.name);
 
           if (isLogged) {
             return (
@@ -568,7 +715,13 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
           return (
             <div key={suggestion.name} className="rounded-xl border border-line bg-surface p-2.5">
               <button
-                onClick={() => setOpen(isOpen ? null : suggestion.name)}
+                onClick={() =>
+                  setClosed((current) =>
+                    isOpen
+                      ? [...current, suggestion.name]
+                      : current.filter((name) => name !== suggestion.name),
+                  )
+                }
                 aria-expanded={isOpen}
                 className="flex w-full items-center gap-2 text-left"
               >
@@ -582,7 +735,7 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-soft px-2 py-1 text-[11px] font-medium text-brand">
                   {isOpen ? (
                     <>
-                      <X size={13} /> Close
+                      <X size={13} /> Hide
                     </>
                   ) : (
                     <>

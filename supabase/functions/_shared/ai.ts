@@ -67,20 +67,42 @@ export interface AiResult {
  * only because it is Groq's sole vision model; it is a reasoning model and
  * needs the flags below to produce an answer rather than a monologue.
  *
- * Every model below was called against its live API and returned a usable
- * reply. The notable absentees, and why:
+ * Every model below was called against its live API and asked for both prose
+ * and JSON; only the ones that returned usable output for both are listed. Of
+ * the nine models on the Groq account, six are here. The absentees, and why:
+ *   llama-3.3-70b-versatile               404 model_not_found — retired by Groq
+ *   llama-3.1-8b-instant                  404 model_not_found — retired by Groq
+ *   meta-llama/llama-prompt-guard-2-22m   400 on any chat request
+ *   meta-llama/llama-prompt-guard-2-86m   400 on any chat request
+ *   groq/compound                         413 request_too_large on a one-line
+ *                                         question; it carries its own tooling
+ *                                         context and leaves no room
  *   google/gemma-4-31b-it:free            errors on every call
  *   inclusionai/ling-3.0-tiny:free        returns an empty body
  *   @cf/openai/gpt-oss-20b                200 with no message content
  *   @cf/meta/llama-3.2-11b-vision-instruct  403 until a model agreement is
  *                                           accepted in the Cloudflare console
+ *
+ * The two prompt-guard models are jailbreak classifiers rather than chat
+ * models — they would have failed every request. `gpt-oss-safeguard-20b` is
+ * also a classifier variant but does answer normally, so it sits late in the
+ * chain where it is only reached after three better models have failed.
+ *
+ * Every Groq model here reasons before it answers, and the thinking is charged
+ * to the same output budget as the reply, which is why anything asking for JSON
+ * needs a generous maxTokens.
+ *
+ * Groq's free tier allows 8k tokens per minute and 200k per day on each model,
+ * so a burst of large JSON requests will rate-limit and fall through to
+ * OpenRouter — which is the chain working, not failing.
  */
 export const CHAT_MODELS: ModelSpec[] = [
-  { provider: "groq", model: "llama-3.3-70b-versatile", vision: false },
   { provider: "groq", model: "openai/gpt-oss-120b", vision: false },
   { provider: "groq", model: "qwen/qwen3.6-27b", vision: true, reasoning: true },
   { provider: "groq", model: "openai/gpt-oss-20b", vision: false },
-  { provider: "groq", model: "llama-3.1-8b-instant", vision: false },
+  { provider: "groq", model: "groq/compound-mini", vision: false },
+  { provider: "groq", model: "openai/gpt-oss-safeguard-20b", vision: false },
+  { provider: "groq", model: "allam-2-7b", vision: false },
   { provider: "openrouter", model: "openai/gpt-oss-20b:free", vision: false },
   { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free", vision: false },
   { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free", vision: false },
@@ -98,7 +120,8 @@ export const VERIFY_MODELS: ModelSpec[] = [
   { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free", vision: false },
   { provider: "openrouter", model: "nvidia/nemotron-nano-9b-v2:free", vision: false },
   { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct-fp8", vision: false },
-  { provider: "groq", model: "llama-3.1-8b-instant", vision: false },
+  { provider: "groq", model: "openai/gpt-oss-20b", vision: false },
+  { provider: "groq", model: "allam-2-7b", vision: false },
 ];
 
 const KEY_NAMES: Record<ProviderName, string> = {
