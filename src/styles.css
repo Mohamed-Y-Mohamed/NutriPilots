@@ -26,6 +26,11 @@
   --color-olive: #071f18;
   --color-olive-deep: #040f0c;
 
+  /* Data ink. Separate from --color-brand because a bar is a large filled
+     area, not a control: the dark-mode brand green is deliberately bright for
+     buttons and too light to sit as a block against a dark surface. */
+  --color-chart: #17966f;
+
   --color-danger: #c0483f;
   --color-danger-soft: #fdf0ef;
   --color-warn: #8a6410;
@@ -51,6 +56,8 @@
   --color-brand: #35c79a;
   --color-brand-strong: #5cd7b1;
   --color-brand-soft: #12291f;
+
+  --color-chart: #2aa87f;
 
   --color-danger: #e5786e;
   --color-danger-soft: #2a1613;

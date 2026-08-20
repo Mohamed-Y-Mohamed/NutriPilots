@@ -3,6 +3,12 @@ import { AiError, callAi, parseJsonLoose } from "../_shared/ai.ts";
 import { chatSystemPrompt, PHOTO_SYSTEM_PROMPT } from "../_shared/prompts.ts";
 import { dishIngredientLines, round, text } from "../_shared/coerce.ts";
 import { labelFor, priceIngredients, totalsFor } from "../_shared/ingredients.ts";
+import {
+  historyStartDate,
+  type IntakeEntry,
+  needsIntakeHistory,
+  summariseIntake,
+} from "../_shared/intake.ts";
 import { splitSuggestions } from "../_shared/suggestions.ts";
 import { json, preflight } from "../_shared/cors.ts";
 import { FUNCTION_BUILD } from "../_shared/version.ts";
@@ -136,7 +142,7 @@ async function handleChat(
   },
 ) {
   const [context, history] = await Promise.all([
-    buildContext(client, userId),
+    buildContext(client, userId, message),
     loadHistory(client, userId),
   ]);
 
@@ -344,13 +350,27 @@ async function deletePhoto(
 // Context and history
 // ---------------------------------------------------------------------------
 
+/**
+ * What the model is told about the person asking.
+ *
+ * The profile and today's running total are always included — they are small,
+ * and almost every answer is better for knowing whether it is talking to
+ * someone cutting or bulking, and what they have already eaten today.
+ *
+ * Two months of eating history is a different matter. It is only fetched when
+ * the question genuinely needs it, so an ordinary "how much protein should I
+ * eat?" never causes it to be read out of the database at all, let alone sent
+ * to a third-party model.
+ */
 async function buildContext(
   client: ReturnType<typeof userClient>,
   userId: string,
+  message: string,
 ): Promise<string> {
   const today = new Date().toISOString().slice(0, 10);
+  const wantsHistory = needsIntakeHistory(message);
 
-  const [profileResult, diaryResult] = await Promise.all([
+  const [profileResult, diaryResult, intakeHistory] = await Promise.all([
     client
       .from("user_profiles")
       .select("age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode")
@@ -361,6 +381,9 @@ async function buildContext(
       .select("calories, protein, carbs, fat")
       .eq("user_id", userId)
       .eq("date", today),
+    wantsHistory
+      ? loadIntakeHistory(client, userId, today)
+      : Promise.resolve<IntakeEntry[]>([]),
   ]);
 
   const profile = profileResult.data;
@@ -396,7 +419,36 @@ async function buildContext(
       `${Math.round(totals.fat)}g fat across ${entries.length} item(s).`,
   );
 
+  if (wantsHistory) {
+    const summary = summariseIntake(intakeHistory, today);
+    if (summary) lines.push("", summary);
+  }
+
   return lines.join("\n");
+}
+
+/**
+ * Two months of daily figures. Only ever called when the question needs them,
+ * so an ordinary nutrition question leaves no trace of the user's diary here.
+ */
+async function loadIntakeHistory(
+  client: ReturnType<typeof userClient>,
+  userId: string,
+  today: string,
+): Promise<IntakeEntry[]> {
+  const { data, error } = await client
+    .from("diary_entries")
+    .select("date, calories, protein, carbs, fat")
+    .eq("user_id", userId)
+    .gte("date", historyStartDate(today))
+    .lte("date", today);
+
+  if (error) {
+    // A coach answering from the profile alone beats one that fails outright.
+    console.error("[ai-chat] intake history unavailable", error.message);
+    return [];
+  }
+  return (data ?? []) as IntakeEntry[];
 }
 
 async function loadHistory(

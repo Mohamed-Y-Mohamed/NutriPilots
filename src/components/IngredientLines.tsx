@@ -1,5 +1,6 @@
 import { Check, Plus, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ScrollingText } from "./ScrollingText";
 import { cx, inputClass } from "./ui";
 import { lineFromIngredient } from "../lib/nutrition";
 import { searchIngredients } from "../services/foodSearch";
@@ -38,9 +39,13 @@ export function IngredientLines({
   };
 
   return (
-    <div className="grid gap-1.5">
+    // Every level down to the name needs to be allowed to shrink. A grid item
+    // sizes to min-content by default, so without these the row keeps its
+    // natural width, pushes the chat bubble wider than the screen and carries
+    // the remove button off the edge of it.
+    <div className="grid min-w-0 gap-1.5">
       {lines.map((line, index) => (
-        <div key={`${line.name}-${index}`} className="flex items-center gap-2">
+        <div key={`${line.name}-${index}`} className="flex min-w-0 items-center gap-2">
           <input
             type="number"
             min="0"
@@ -49,11 +54,11 @@ export function IngredientLines({
             aria-label={`Amount of ${line.name}`}
             value={line.amount}
             onChange={(event) => setAmount(index, event.target.value)}
-            className="min-h-9 w-16 shrink-0 rounded-lg border border-line bg-surface px-2 text-right text-[13px] font-semibold tabular-nums outline-none focus:border-brand"
+            className="min-h-9 w-14 shrink-0 rounded-lg border border-line bg-surface px-1.5 text-right text-[13px] font-semibold tabular-nums outline-none focus:border-brand"
           />
-          <span className="w-5 shrink-0 text-[11px] text-ink-faint">{line.unit}</span>
+          <span className="shrink-0 text-[11px] text-ink-faint">{line.unit}</span>
 
-          <span className="min-w-0 flex-1 truncate text-[13px]">
+          <ScrollingText className="flex-1 text-[13px]" title={line.name}>
             {line.name}
             {/* Only the guesses are marked. Labelling the rest "from the
                 database" would be noise on almost every row. */}
@@ -62,13 +67,13 @@ export function IngredientLines({
                 estimate
               </span>
             )}
-          </span>
+          </ScrollingText>
 
           <button
             type="button"
             onClick={() => onChange(lines.filter((_, at) => at !== index))}
             aria-label={`Remove ${line.name}`}
-            className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-muted hover:text-ink"
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-muted hover:text-ink"
           >
             <X size={14} />
           </button>

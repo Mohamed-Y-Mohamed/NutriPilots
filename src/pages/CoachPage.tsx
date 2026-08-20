@@ -10,6 +10,7 @@ import {
   useTypewriter,
 } from "../components/ui";
 import { IngredientLines } from "../components/IngredientLines";
+import { ScrollingText } from "../components/ScrollingText";
 import { formatTimeUntil } from "../lib/dates";
 import { round1, totalsForLines } from "../lib/nutrition";
 import { prepareImage } from "../lib/image";
@@ -400,6 +401,14 @@ function Welcome({ onPick }: { onPick: (text: string) => void }) {
           </button>
         ))}
       </div>
+
+      {/* Said once, here, rather than under every reply: a caveat repeated on
+          each message stops being read after the second one. */}
+      <p className="mt-6 max-w-sm text-[11px] leading-relaxed text-ink-faint">
+        The coach gives you the best answer it can, but it can be wrong. Use your own judgement,
+        and check with a dietitian or your GP before acting on anything that matters — especially
+        if you are pregnant, unwell, or managing a medical condition.
+      </p>
     </div>
   );
 }
@@ -696,7 +705,7 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
         numbers first.
       </p>
 
-      <div className="grid gap-2">
+      <div className="grid min-w-0 gap-2">
         {suggestions.map((suggestion) => {
           const isLogged = logged.includes(suggestion.name);
           const isOpen = !closed.includes(suggestion.name);
@@ -713,7 +722,10 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
           }
 
           return (
-            <div key={suggestion.name} className="rounded-xl border border-line bg-surface p-2.5">
+            <div
+              key={suggestion.name}
+              className="min-w-0 rounded-xl border border-line bg-surface p-2.5"
+            >
               <button
                 onClick={() =>
                   setClosed((current) =>
@@ -726,7 +738,9 @@ function SuggestionList({ suggestions }: { suggestions: MealSuggestion[] }) {
                 className="flex w-full items-center gap-2 text-left"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium">{suggestion.name}</span>
+                  <ScrollingText className="text-[13px] font-medium" title={suggestion.name}>
+                    {suggestion.name}
+                  </ScrollingText>
                   <span className="block text-[11px] tabular-nums text-ink-muted">
                     {Math.round(suggestion.calories)} kcal · P {Math.round(suggestion.protein_g)} ·
                     C {Math.round(suggestion.carbs_g)} · F {Math.round(suggestion.fat_g)}

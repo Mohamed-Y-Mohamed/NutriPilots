@@ -188,6 +188,25 @@ export interface RecentFood {
 }
 
 /**
+ * One day of the diary, already added up.
+ *
+ * The trends on the Today screen need a figure per day across weeks or months.
+ * Summing happens in the database so a year of eating arrives as a few hundred
+ * small rows rather than every food that made them up.
+ */
+export interface DayTotals {
+  /** Local calendar day, YYYY-MM-DD. */
+  date: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fibre: number;
+  /** How many foods were logged that day. */
+  items: number;
+}
+
+/**
  * One ingredient of an estimate: how much of it, and what 100g of it contains.
  *
  * The per-100 figures are what make the estimate editable. Correcting an amount

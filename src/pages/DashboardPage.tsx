@@ -21,6 +21,9 @@ import {
   Skeleton,
   SkeletonBlock,
 } from "../components/ui";
+import { IntakeTrends } from "../components/IntakeTrends";
+import { QuickAdd } from "../components/QuickAdd";
+import { ScrollingText } from "../components/ScrollingText";
 import { addDays, formatDayLabel, localDateKey } from "../lib/dates";
 import { useAppData } from "../state/AppDataContext";
 import { MEALS, type DiaryEntry, type MealName } from "../types";
@@ -82,7 +85,10 @@ export function DashboardPage() {
       {!hasProfile ? (
         <GoalPrompt onStart={() => navigate("/goals")} />
       ) : (
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4">
+        <QuickAdd />
+
+        <div className="grid gap-4 md:grid-cols-2">
         <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="text-sm font-medium text-ink-muted">
@@ -111,6 +117,9 @@ export function DashboardPage() {
             <MacroBar label="Fibre" value={totals.fibre} target={targets.fibre} colour="#8fa9d8" />
           </div>
         </Card>
+        </div>
+
+        <IntakeTrends target={targets.calories} today={today} />
       </div>
       )}
 
@@ -244,7 +253,9 @@ function MealGroup({
           className="flex min-h-14 items-center gap-3 border-t border-line-soft py-2"
         >
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium">{entry.name}</p>
+            <ScrollingText className="text-[13px] font-medium" title={entry.name}>
+              {entry.name}
+            </ScrollingText>
             <p className="truncate text-[11px] text-ink-muted">{describePortion(entry)}</p>
           </div>
           <div className="shrink-0 text-right">
