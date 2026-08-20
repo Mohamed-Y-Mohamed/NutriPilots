@@ -23,6 +23,15 @@ android/app/release/
 supabase/manual/
 supaUpdate/
 
+# Kept out of the repository by choice. These files still have to exist locally:
+# scripts/deploy-supabase.mjs applies them, and scripts/bundle-functions.mjs
+# generates supabase/manual/ and supaUpdate/ from them. A fresh clone will not
+# be able to provision a database without them.
+supabase/migrations/
+# The deployed schema, captured for reference. Same reasoning as the migrations
+# above: kept locally so the structure is knowable, out of a public repository.
+supabase/CURRENT_SCHEMA.md
+
 # Playwright
 test-results/
 playwright-report/

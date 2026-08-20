@@ -7,7 +7,7 @@ const ON_TARGET_TOLERANCE = 0.1;
 
 const DAYS_IN = { week: 7, month: 30, year: 365 } as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = [
+export const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];

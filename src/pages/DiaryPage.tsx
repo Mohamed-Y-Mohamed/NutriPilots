@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AddIngredientSheet } from "../components/AddIngredientSheet";
 import { AddRecipeSheet } from "../components/AddRecipeSheet";
+import { CoachBanner } from "../components/CoachBanner";
 import { FoodList, FoodRow } from "../components/FoodRow";
 import { PortionEditor } from "../components/PortionEditor";
 import {
@@ -159,6 +160,8 @@ export function DiaryPage() {
         title="What did you eat?"
         subtitle={`Adding to ${formatDayLabel(date).toLowerCase()}. Search a food, pick a recipe, or reuse something you have logged before.`}
       />
+
+      <CoachBanner className="mb-4" />
 
       <div className="mb-4">
         <span className={labelClass}>Meal</span>

@@ -25,10 +25,17 @@ const OVERRIDE: DailyTargets = {
 
 describe("effectiveTargets", () => {
   it("uses the formula when nothing has overridden it", () => {
-    const targets = effectiveTargets(PROFILE);
-    // Mifflin–St Jeor for these stats, moderately active, cutting.
-    expect(targets.calories).toBeGreaterThan(2000);
-    expect(targets.protein).toBeGreaterThan(0);
+    // Mifflin–St Jeor for a 30-year-old man, 180cm, 82kg:
+    //   10(82) + 6.25(180) - 5(30) + 5 = 1800 BMR
+    //   x 1.55 moderate = 2790, - 300 to lose = 2490
+    // then the "lose" split: 30% protein, 40% carbs, 30% fat.
+    expect(effectiveTargets(PROFILE)).toEqual({
+      calories: 2490,
+      protein: Math.round((2490 * 0.3) / 4),
+      carbs: Math.round((2490 * 0.4) / 4),
+      fat: Math.round((2490 * 0.3) / 9),
+      fibre: Math.max(25, Math.round((2490 / 1000) * 14)),
+    });
   });
 
   it("prefers an override over the formula", () => {

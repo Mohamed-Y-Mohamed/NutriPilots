@@ -31,6 +31,14 @@
      buttons and too light to sit as a block against a dark surface. */
   --color-chart: #17966f;
 
+  /* One per macro bar. Not the brand or status tokens: a bar is data, and
+     "fat" is not a warning. Checked for chroma and lightness against both
+     surfaces rather than picked by eye. */
+  --color-macro-protein: #17966f;
+  --color-macro-carbs: #c9e86b;
+  --color-macro-fat: #d99a4f;
+  --color-macro-fibre: #5f8fd6;
+
   --color-danger: #c0483f;
   --color-danger-soft: #fdf0ef;
   --color-warn: #8a6410;
@@ -58,6 +66,11 @@
   --color-brand-soft: #12291f;
 
   --color-chart: #2aa87f;
+
+  --color-macro-protein: #2aa87f;
+  --color-macro-carbs: #a9c95a;
+  --color-macro-fat: #c2853f;
+  --color-macro-fibre: #6b93d6;
 
   --color-danger: #e5786e;
   --color-danger-soft: #2a1613;

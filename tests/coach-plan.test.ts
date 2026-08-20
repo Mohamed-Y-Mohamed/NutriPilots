@@ -100,8 +100,31 @@ describe("splitPlan", () => {
     expect(plan?.exercise).toBe("");
   });
 
-  it("clamps a negative macro rather than storing it", () => {
+  it("clamps a negative macro to zero rather than storing it", () => {
     const { plan } = splitPlan(block({ ...GOOD, protein_g: -50 }), 1500);
-    expect(plan!.targets.protein).toBeGreaterThanOrEqual(0);
+    expect(plan!.targets.protein).toBe(0);
+  });
+
+  /**
+   * Rescaling happens after the ceilings are applied, so it can carry a figure
+   * straight back past one: with carbs and fat at zero, protein becomes a
+   * quarter of the calories — 2,000g at the top of the range. The table
+   * rejects that, and the user is shown a raw constraint violation for a plan
+   * they did not write.
+   */
+  it.each([
+    [9000, 1500],
+    [8000, 600],
+    [5000, 400],
+    [4400, 300],
+  ])("keeps macros inside their ceiling after rescaling %i kcal", (calories, protein) => {
+    const { plan } = splitPlan(
+      block({ ...GOOD, calories, protein_g: protein, carbs_g: 0, fat_g: 0 }),
+      1500,
+    );
+
+    expect(plan!.targets.protein).toBeLessThanOrEqual(1000);
+    expect(plan!.targets.carbs).toBeLessThanOrEqual(2000);
+    expect(plan!.targets.fat).toBeLessThanOrEqual(1000);
   });
 });

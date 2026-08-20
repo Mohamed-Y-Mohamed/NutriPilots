@@ -93,12 +93,16 @@ function reconcile(targets: CoachPlan["targets"]): CoachPlan["targets"] {
   const drift = Math.abs(fromMacros - targets.calories) / targets.calories;
   if (drift <= RECONCILE_TOLERANCE) return targets;
 
+  // Re-clamped, because scaling happens after the ceilings were applied and
+  // can carry a figure straight back past them: with carbs and fat at zero,
+  // protein becomes calories/4, which is 2,000g at the calorie ceiling. The
+  // table rejects that, and the user is shown a raw constraint violation.
   const scale = targets.calories / fromMacros;
   return {
     ...targets,
-    protein: Math.round(targets.protein * scale),
-    carbs: Math.round(targets.carbs * scale),
-    fat: Math.round(targets.fat * scale),
+    protein: clamp(Math.round(targets.protein * scale), 0, MACRO_CEILINGS.protein),
+    carbs: clamp(Math.round(targets.carbs * scale), 0, MACRO_CEILINGS.carbs),
+    fat: clamp(Math.round(targets.fat * scale), 0, MACRO_CEILINGS.fat),
   };
 }
 

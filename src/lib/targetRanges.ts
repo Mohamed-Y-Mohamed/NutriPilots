@@ -166,7 +166,15 @@ export function checkTargets(targets: DailyTargets, profile: UserProfile): Targe
 
   // 3. The macros and the calorie total have to describe the same day.
   const fromMacros = targets.protein * 4 + targets.carbs * 4 + targets.fat * 9;
-  if (!errors.calories && targets.calories > 0 && fromMacros > 0) {
+  if (!errors.calories && targets.calories > 0 && fromMacros === 0) {
+    // Every macro at zero is not an unusual split, it is an empty one. The
+    // drift check below skipped it, so this used to save with a gentle note.
+    errors.calories = {
+      message:
+        "Those macros add up to nothing. Give protein, carbs and fat figures that match the calories.",
+      coachCanOverride: false,
+    };
+  } else if (!errors.calories && targets.calories > 0 && fromMacros > 0) {
     const drift = Math.abs(fromMacros - targets.calories) / targets.calories;
     if (drift > 0.25) {
       // Not a limit anyone can lift: the two numbers simply disagree.

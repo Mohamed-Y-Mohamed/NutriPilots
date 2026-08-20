@@ -13,7 +13,7 @@ export function CoachBanner({ className }: { className?: string }) {
   return (
     <Link
       to="/coach"
-      className={`flex items-center gap-3 rounded-xl bg-olive px-3.5 py-3 transition-colors hover:bg-olive-deep ${className ?? ""}`}
+      className={`flex items-center gap-3 rounded-xl bg-olive px-3.5 py-3 transition-transform transition-colors hover:bg-olive-deep active:scale-[0.98] ${className ?? ""}`}
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-white/10 text-lime">
         <Bot size={18} />

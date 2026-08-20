@@ -44,6 +44,18 @@ describe("deciding whether the question needs the user's history", () => {
     "Is intermittent fasting worth trying?",
     "how do I cook lentils",
     "",
+    // General knowledge that reads as personal but is not. Every one of these
+    // used to ship two months of somebody's diary to a third-party model.
+    "What's the average calorie content of a banana?",
+    "How much protein does the average adult need?",
+    "Is the typical portion of rice 75g or 100g?",
+    "What are the big nutrition trends this year?",
+    "Is creatine trending for a reason or is it hype?",
+    "Why is consistency more important than perfection?",
+    "How do I stay on track when eating out?",
+    "I'm stuck on what to cook for dinner tonight",
+    "Can you review my idea for a high-protein breakfast?",
+    "What should I eat this week to hit 150g protein?",
   ])("keeps it back for %j", (question) => {
     expect(needsIntakeHistory(question)).toBe(false);
   });

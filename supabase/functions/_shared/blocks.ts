@@ -23,13 +23,23 @@
  * block at all.
  */
 export function splitBlock(raw: string, name: string): { rest: string; payload: string | null } {
-  const block = new RegExp(`<{2,}\\s*${name}\\b([\\s\\S]*?)(?:\\b${name}\\s*>{2,}|$)`, "i");
+  // Global: a model inconsistent enough to open one block is inconsistent
+  // enough to open two, and only the first is ever read. Removing just that one
+  // left the second block's JSON in the reply once the markers around it had
+  // been scrubbed — raw payload, in a chat bubble, presented as prose.
+  const block = new RegExp(`<{2,}\\s*${name}\\b([\\s\\S]*?)(?:\\b${name}\\s*>{2,}|$)`, "gi");
   const loose = new RegExp(`<{2,}\\s*${name}\\b|\\b${name}\\s*>{2,}`, "gi");
 
-  const match = raw.match(block);
-  const rest = (match ? raw.replace(match[0], "") : raw).replace(loose, "").trim();
+  const first = new RegExp(block.source, "i").exec(raw);
+  const rest = raw
+    .replace(block, "")
+    .replace(loose, "")
+    // Removing a block from the middle leaves the blank lines that surrounded
+    // it stacked together.
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
-  return { rest, payload: match ? match[1] : null };
+  return { rest, payload: first ? first[1] : null };
 }
 
 /**

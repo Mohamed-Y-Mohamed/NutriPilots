@@ -1,7 +1,7 @@
 import { Plus, Trash2, UtensilsCrossed } from "lucide-react";
 import { useState } from "react";
 import { ScrollingText } from "./ScrollingText";
-import { Card, IconButton, Segmented } from "./ui";
+import { Button, Card, IconButton, Segmented } from "./ui";
 import { useAppData } from "../state/AppDataContext";
 import { MEALS, type DiaryEntry, type MealName } from "../types";
 
@@ -50,7 +50,7 @@ export function TodayFood({ onAddTo }: { onAddTo: (meal: MealName) => void }) {
       </div>
 
       {shown.length === 0 ? (
-        <Empty />
+        <Empty onAdd={() => onAddTo(mealForNow())} />
       ) : (
         <div className="mt-4 grid min-w-0 gap-4">
           {shown.map((group) => (
@@ -92,7 +92,7 @@ function MealGroup({
           type="button"
           onClick={onAdd}
           aria-label={`Add to ${meal.toLowerCase()}`}
-          className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-brand transition-colors hover:bg-brand-soft"
+          className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium text-brand transition-colors hover:bg-brand-soft"
         >
           <Plus size={13} /> Add
         </button>
@@ -132,7 +132,13 @@ function MealGroup({
   );
 }
 
-function Empty() {
+/**
+ * A day with nothing on it is the commonest state of the app's main screen —
+ * every morning, for everyone. It has to offer the way in, not just describe
+ * one: under "All" there are no meal headings yet, so without this there is no
+ * button anywhere on the card.
+ */
+function Empty({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="mt-4 flex flex-col items-center rounded-xl bg-muted px-4 py-6 text-center">
       <span className="grid size-10 place-items-center rounded-xl bg-surface text-ink-faint">
@@ -140,10 +146,25 @@ function Empty() {
       </span>
       <p className="mt-3 text-[13px] font-medium">Nothing logged yet</p>
       <p className="mt-1 max-w-xs text-[12px] leading-relaxed text-ink-muted">
-        Add something below and it will appear here, under the meal you chose.
+        Add your first food and it will appear here, under the meal you chose.
       </p>
+      <Button variant="primary" size="sm" className="mt-4" onClick={onAdd}>
+        <Plus size={15} /> Add food
+      </Button>
     </div>
   );
+}
+
+/**
+ * Whichever meal it probably is. Breakfast at nine and dinner at seven is a
+ * better opening guess than always offering lunch.
+ */
+function mealForNow(): MealName {
+  const hour = new Date().getHours();
+  if (hour < 11) return "Breakfast";
+  if (hour < 16) return "Lunch";
+  if (hour < 21) return "Dinner";
+  return "Snacks";
 }
 
 function describePortion(entry: DiaryEntry): string {

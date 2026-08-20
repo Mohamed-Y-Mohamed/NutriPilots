@@ -22,12 +22,16 @@ loadDotEnv(join(root, ".env"));
 loadDotEnv(join(root, ".env.deploy"));
 
 const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
-const REF = process.env.SUPABASE_PROJECT_REF ?? "yhgkrbnmhgspgckvvfhe";
+const REF = process.env.SUPABASE_PROJECT_REF;
 const URL = process.env.VITE_SUPABASE_URL ?? `https://${REF}.supabase.co`;
 const ANON = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 if (!TOKEN) fail("SUPABASE_ACCESS_TOKEN is not set (see .env.deploy).");
 if (!ANON) fail("VITE_SUPABASE_PUBLISHABLE_KEY is not set (see .env).");
+// Deliberately not defaulted. This script creates and deletes a real account,
+// and a default pointed the whole thing at production for anyone who ran it
+// without reading it first.
+if (!REF) fail("SUPABASE_PROJECT_REF is not set — name the project to verify (see .env.deploy).");
 
 const results = [];
 let serviceKey;
@@ -35,7 +39,10 @@ let userId;
 let accessToken;
 
 const email = `nutripilot-verify-${Date.now()}@example.com`;
-const password = `Verify-${Math.random().toString(36).slice(2, 10)}!9`;
+// randomUUID, not Math.random: teardown is best-effort, so a crash can leave
+// this account alive, and the password to a live account should not come from
+// a generator that is not meant to be unguessable.
+const password = `Verify-${crypto.randomUUID()}!9`;
 
 try {
   serviceKey = await fetchServiceKey();

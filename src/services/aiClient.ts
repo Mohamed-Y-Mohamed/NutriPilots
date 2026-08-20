@@ -1,3 +1,4 @@
+import { localDateKey } from "../lib/dates";
 import { requireSupabase } from "../lib/supabase";
 import type {
   AiProvider,
@@ -122,7 +123,15 @@ export async function sendChatMessage(
   message: string,
   imagePath?: string,
 ): Promise<AiChatResponse> {
-  const response = await invokeFunction<AiChatResponse>("ai-chat", { message, imagePath });
+  // The diary is written with the user's local calendar day, so the coach has
+  // to ask about the same one. A server deriving "today" from its own UTC clock
+  // tells anyone west of UTC they have eaten nothing, every evening, from the
+  // moment UTC rolls over until their own midnight.
+  const response = await invokeFunction<AiChatResponse>("ai-chat", {
+    message,
+    imagePath,
+    today: localDateKey(),
+  });
   if (response.build) {
     lastFunctionBuild = response.build;
     try {

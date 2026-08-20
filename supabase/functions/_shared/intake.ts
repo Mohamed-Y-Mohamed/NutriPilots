@@ -35,30 +35,36 @@ const WEEKS_SHOWN = 4;
  * eating to a model that had no use for it.
  */
 const NEEDS_HISTORY: RegExp[] = [
-  // A result that has stopped moving.
-  /\b(plateau|plateaued|stalled|stuck)\b/,
+  // A result that has stopped moving. "Stuck" and "stalled" need something to
+  // be stuck about, or they catch "I'm stuck on what to cook for dinner".
+  /\bplateau(ed)?\b/,
+  // "at 82kg" is a weight too, and the commonest way people write one.
+  /\b(stuck|stalled)\b[^.?!]*(\b(weight|scale|progress|loss|losing|cut|bulk|gain)\b|\d+\s*(kg|lbs?|stone|st)\b)/,
   /\bsame weight\b/,
   /\bno (progress|change|results|movement)\b/,
   /\b(not|n't|stopped|no longer)\s+(losing|gaining|dropping|shifting|budging|moving)\b/,
   /\bweight\b[^.?!]*\b(hasn't|isn't|has not|is not|not)\b[^.?!]*\b(moved|moving|changed|changing|budged|dropped|shifted)\b/,
 
-  // Asking the app to judge how they have been getting on.
+  // Asking the app to judge how they have been getting on. Every one of these
+  // needs a first person: "consistency" and "on track" on their own are
+  // general advice that no diary improves.
   /\bam i\b[^.?!]*\b(eating|getting|having)\b[^.?!]*\b(enough|too much|too little|too few|too many)\b/,
   /\bhow (am i|have i been|are things)\b[^.?!]*\bdoing\b/,
   /\bwhat am i doing wrong\b/,
-  /\b(have|has) i been\b/,
   /\bhow have i been\b/,
-  /\b(consistent|consistency)\b/,
-  /\bon track\b/,
-  /\breview my\b/,
+  /\b(am i|i'm|have i been)\b[^.?!]*\bconsistent/,
+  /\b(am i|i'm)\b[^.?!]*\bon track\b/,
+  /\breview my (diary|intake|log|logs|week|month|progress|numbers|data|eating|food)\b/,
 
-  // Their own numbers, over a stretch of time.
-  /\b(my|the) (average|typical|usual)\b/,
-  /\baverage (intake|calories|kcal|protein|macros)\b/,
+  // Their own numbers over a stretch of time. "the average" is somebody else's
+  // — "what is the average calorie content of a banana" needs no diary at all.
+  /\bmy (average|typical|usual)\b/,
+  /\bmy\b[^.?!]*\baverage (intake|calories|kcal|protein|macros)\b/,
   /\b(am i|i'm|my)\b[^.?!]*\b(deficit|surplus|maintenance)\b/,
-  /\b(last|past|previous|this)\s+(week|fortnight|month)\b[^.?!]*\b(eat|ate|eaten|eating|intake|calories|kcal|protein|logged|diet)\b/,
-  /\b(eat|ate|eaten|eating|intake|calories|kcal|protein|logged|diet)\b[^.?!]*\b(last|past|previous|this)\s+(week|fortnight|month)\b/,
-  /\b(trend|trends|trending)\b/,
+  // Backward-looking only. "this week" on its own is a plan for the days ahead.
+  /\b(last|past|previous)\s+(week|fortnight|month)\b[^.?!]*\b(eat|ate|eaten|eating|intake|calories|kcal|protein|logged|diet)\b/,
+  /\b(ate|eaten|logged)\b[^.?!]*\b(last|past|previous|this)\s+(week|fortnight|month)\b/,
+  /\bmy\b[^.?!]*\b(trend|trending)\b/,
 ];
 
 /** The oldest day `summariseIntake` will look at, so the caller can fetch it. */

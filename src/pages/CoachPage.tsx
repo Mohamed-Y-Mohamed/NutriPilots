@@ -78,6 +78,7 @@ export function CoachPage() {
   const [animatingId, setAnimatingId] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const promptRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,7 +131,12 @@ export function CoachPage() {
     event?.preventDefault();
     if (sending) return;
 
-    const text = (overrideText ?? prompt).trim();
+    // Some Android keyboards hold a word in composition without committing it,
+    // so React's value can trail what the user can plainly see. The box itself
+    // is the authority on what they typed.
+    const text = overrideText !== undefined
+      ? overrideText.trim()
+      : prompt.trim() || (promptRef.current?.value ?? "").trim();
     // Every message carries text; the photo is the optional part. Saying so
     // beats returning in silence: a send button that does nothing reads as a
     // broken app, and the user has no idea the note is what is missing.
@@ -214,6 +220,8 @@ export function CoachPage() {
       setSending(false);
     }
   };
+
+  const hasText = Boolean(prompt.trim());
 
   const clear = async () => {
     if (!user) return;
@@ -348,6 +356,7 @@ export function CoachPage() {
           )}
 
           <input
+            ref={promptRef}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder={photo ? "Say what this is…" : "Ask about food…"}
@@ -357,9 +366,23 @@ export function CoachPage() {
 
           <button
             type="submit"
-            disabled={sending || !prompt.trim()}
+            // Keeps focus in the box for the length of the tap. Without it the
+            // input blurs first, the keyboard starts to close, the composer
+            // moves down with it and the tap lands where the button no longer
+            // is — which reads as a send button that sometimes does nothing.
+            onMouseDown={(event) => event.preventDefault()}
+            // Only ever disabled while a send is in flight. Greying it out on
+            // empty state looks tidier but takes the tap away entirely, and a
+            // keyboard holding a word in composition leaves state empty under
+            // text the user can see — so the button they are looking straight
+            // at stops responding. It stays tappable and says what is missing.
+            disabled={sending}
+            aria-disabled={!hasText}
             aria-label="Send"
-            className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white transition-transform active:scale-90 disabled:opacity-35 disabled:active:scale-100"
+            className={cx(
+              "grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white transition-transform active:scale-90",
+              !hasText && "opacity-35",
+            )}
           >
             <Send size={17} />
           </button>
@@ -557,15 +580,7 @@ function EstimateCard({
   // corrected amount, a removed ingredient and an added one all land in the
   // same place and cannot drift apart from the figure that gets logged.
   const itemised = lines.length > 0;
-  const totals = itemised
-    ? totalsForLines(lines)
-    : {
-      calories: estimate.calories,
-      protein: estimate.protein_g,
-      carbs: estimate.carbs_g,
-      fat: estimate.fat_g,
-      fibre: estimate.fibre_g,
-    };
+  const totals = totalsForLines(lines);
 
   // Older estimates predate the itemised breakdown, so their macros stay
   // directly editable rather than losing the ability to be corrected at all.

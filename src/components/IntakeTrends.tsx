@@ -1,7 +1,14 @@
 import { LineChart } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Card, cx, Segmented, Skeleton } from "./ui";
-import { rangeBounds, summariseTrend, type TrendBucket, type TrendRange } from "../lib/trends";
+import {
+  MONTHS,
+  rangeBounds,
+  summariseTrend,
+  type TrendBucket,
+  type TrendRange,
+  type TrendSummary,
+} from "../lib/trends";
 import { loadDailyTotals, MissingMigrationError } from "../services/analyticsRepository";
 import { useAppData } from "../state/AppDataContext";
 import type { DayTotals } from "../types";
@@ -11,13 +18,6 @@ const RANGES = [
   { value: "month" as const, label: "Month" },
   { value: "year" as const, label: "Year" },
 ];
-
-/**
- * Two days is not much of a trend, but it is what somebody who has logged two
- * days wants to see. The chart is drawn from whatever exists and says how many
- * days it rests on, rather than withholding it until some threshold is met.
- */
-const ENOUGH_DAYS = 1;
 
 /**
  * How the last week, month or year has actually gone.
@@ -31,11 +31,9 @@ const ENOUGH_DAYS = 1;
 export function IntakeTrends({ target, today }: { target: number; today: string }) {
   // Today's bar is drawn from the same rows the diary shows, so adding or
   // deleting food has to send it back for them. Without this a deleted meal
-  // stays in the chart and the averages until the range is switched.
+  // stays in the chart and the averages until the range is switched. The array
+  // identity is the signal: AppDataContext only ever replaces it, never mutates.
   const { diary } = useAppData();
-  const diarySignature = `${diary.length}:${Math.round(
-    diary.reduce((sum, entry) => sum + entry.calories, 0),
-  )}`;
 
   const [range, setRange] = useState<TrendRange>("week");
   const [days, setDays] = useState<DayTotals[]>([]);
@@ -72,7 +70,7 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
     return () => {
       live = false;
     };
-  }, [range, today, diarySignature]);
+  }, [range, today, diary]);
 
   const summary = useMemo(
     () => summariseTrend(days, { range, today, target }),
@@ -107,7 +105,7 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
           <Skeleton className="h-10 w-40" />
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : summary.daysLogged < ENOUGH_DAYS ? (
+      ) : summary.daysLogged === 0 ? (
         <NothingYet range={range} />
       ) : (
         <>
@@ -135,7 +133,7 @@ function Readout({
   selected,
   range,
 }: {
-  summary: ReturnType<typeof summariseTrend>;
+  summary: TrendSummary;
   selected: TrendBucket | null;
   range: TrendRange;
 }) {
@@ -179,9 +177,67 @@ function Bars({
   const ceiling = Math.max(target, ...buckets.map((bucket) => bucket.calories)) * 1.12 || 1;
   const targetAt = (target / ceiling) * 100;
 
+  const plot = useRef<HTMLDivElement>(null);
+
+  /**
+   * Whichever bar the finger is over, by position rather than by hit-testing a
+   * bar.
+   *
+   * A month is thirty-one bars in about 300 points of width — eight points
+   * each, a fifth of a usable target. Tapping one meant landing on whichever
+   * neighbour was nearest and being shown a plausible, wrong day with nothing
+   * to signal the miss. Reading the x offset instead makes every bar equally
+   * reachable however many there are.
+   */
+  const pickAt = (clientX: number) => {
+    const box = plot.current?.getBoundingClientRect();
+    if (!box || buckets.length === 0) return;
+    const ratio = (clientX - box.left) / box.width;
+    const index = Math.min(buckets.length - 1, Math.max(0, Math.floor(ratio * buckets.length)));
+    onPick(buckets[index].key);
+  };
+
+  const step = (by: number) => {
+    const at = buckets.findIndex((bucket) => bucket.key === picked);
+    const next = at === -1 ? buckets.length - 1 : at + by;
+    if (next >= 0 && next < buckets.length) onPick(buckets[next].key);
+  };
+
   return (
     <figure className="mt-4">
-      <div className="relative h-32">
+      {/* Ahead of the chart, not after it: read out, this is the sentence that
+          says what the dashed line and the faint stubs mean, and it was
+          arriving last. */}
+      <figcaption id="trend-caption" className="mb-2 text-[11px] text-ink-faint">
+        Each bar is a {range === "year" ? "month's average" : "day"}. The dashed line is your{" "}
+        {target.toLocaleString()} kcal target; a faint line on the baseline means nothing was
+        logged that {range === "year" ? "month" : "day"}. Tap the chart to read a single one.
+      </figcaption>
+
+      {/*
+        One control, not one per bar — the same choice CalorieRing already makes.
+        A screen reader gets a summary and arrow keys; a thumb gets the whole
+        plot rather than an eight-point sliver.
+      */}
+      <div
+        ref={plot}
+        role="img"
+        tabIndex={0}
+        aria-describedby="trend-caption"
+        aria-label={summarise(buckets, range)}
+        onPointerDown={(event) => pickAt(event.clientX)}
+        onPointerMove={(event) => {
+          if (event.buttons === 1) pickAt(event.clientX);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") step(-1);
+          else if (event.key === "ArrowRight") step(1);
+          else if (event.key === "Escape") onPick(null);
+          else return;
+          event.preventDefault();
+        }}
+        className="relative h-32 touch-none rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand"
+      >
         {/* The target, as something to read the bars against. */}
         <div
           aria-hidden="true"
@@ -190,22 +246,13 @@ function Bars({
         />
         <div className="flex h-full items-end gap-[2px]">
           {buckets.map((bucket) => (
-            <button
-              key={bucket.key}
-              type="button"
-              onClick={() => onPick(picked === bucket.key ? null : bucket.key)}
-              aria-label={`${longLabel(bucket, range)}: ${
-                bucket.logged ? `${Math.round(bucket.calories)} kcal` : "nothing logged"
-              }`}
-              aria-pressed={picked === bucket.key}
-              className="group relative flex h-full min-w-0 flex-1 items-end"
-            >
+            <span key={bucket.key} className="flex h-full min-w-0 flex-1 items-end">
               {bucket.logged ? (
                 <span
-                  className="w-full rounded-t bg-chart transition-opacity group-active:opacity-70"
+                  className="w-full rounded-t bg-chart"
                   style={{
                     height: `${Math.max((bucket.calories / ceiling) * 100, 2)}%`,
-                    // The tapped bar keeps full strength; the rest step back so
+                    // The chosen bar keeps full strength; the rest step back so
                     // the selection is not carried by colour alone.
                     opacity: picked && picked !== bucket.key ? 0.4 : 1,
                   }}
@@ -216,19 +263,32 @@ function Bars({
                 // indistinguishable from having eaten nothing.
                 <span className="h-[2px] w-full rounded-t bg-line" />
               )}
-            </button>
+            </span>
           ))}
         </div>
       </div>
 
       <Axis buckets={buckets} range={range} />
-
-      <figcaption className="mt-2 text-[11px] text-ink-faint">
-        Each bar is a {range === "year" ? "month's average" : "day"}. The dashed line is your{" "}
-        {target.toLocaleString()} kcal target; a faint line on the baseline means nothing was
-        logged that {range === "year" ? "month" : "day"}.
-      </figcaption>
     </figure>
+  );
+}
+
+/** One sentence for a reader who cannot see thirty bars. */
+function summarise(buckets: TrendBucket[], range: TrendRange): string {
+  const logged = buckets.filter((bucket) => bucket.logged);
+  const unit = range === "year" ? "month" : "day";
+  if (logged.length === 0) return `Intake chart: nothing logged in this ${range}.`;
+
+  const values = logged.map((bucket) => bucket.calories);
+  const average = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  const highest = logged[values.indexOf(Math.max(...values))];
+  const lowest = logged[values.indexOf(Math.min(...values))];
+
+  return (
+    `Intake chart, one bar per ${unit}. ${logged.length} of ${buckets.length} logged, ` +
+    `averaging ${average.toLocaleString()} kcal. Highest ${longLabel(highest, range)} at ` +
+    `${Math.round(highest.calories).toLocaleString()}, lowest ${longLabel(lowest, range)} at ` +
+    `${Math.round(lowest.calories).toLocaleString()}. Use the arrow keys to read each ${unit}.`
   );
 }
 
@@ -248,7 +308,7 @@ function Axis({ buckets, range }: { buckets: TrendBucket[]; range: TrendRange })
       .filter(Boolean);
 
     return (
-      <div className="mt-1.5 flex justify-between text-[9px] text-ink-faint">
+      <div aria-hidden="true" className="mt-1.5 flex justify-between text-[10px] text-ink-faint">
         {at.map((bucket) => (
           <span key={bucket.key}>{dayAndMonth(bucket.key)}</span>
         ))}
@@ -257,12 +317,12 @@ function Axis({ buckets, range }: { buckets: TrendBucket[]; range: TrendRange })
   }
 
   return (
-    <div className="mt-1.5 flex gap-[2px]">
+    <div aria-hidden="true" className="mt-1.5 flex gap-[2px]">
       {buckets.map((bucket, index) => (
         <span
           key={bucket.key}
           className={cx(
-            "min-w-0 flex-1 overflow-hidden text-[9px] text-ink-faint",
+            "min-w-0 flex-1 overflow-hidden text-[10px] text-ink-faint",
             index === 0 ? "text-left" : index === buckets.length - 1 ? "text-right" : "text-center",
           )}
         >
@@ -290,7 +350,7 @@ function Averages({
   summary,
   range,
 }: {
-  summary: ReturnType<typeof summariseTrend>;
+  summary: TrendSummary;
   range: TrendRange;
 }) {
   const macros = [
@@ -332,7 +392,7 @@ function Averages({
           </strong>
         </dd>
         <dd>
-          {range === "week" ? "This week" : range === "month" ? "This month" : "This year"}{" "}
+          This {range}{" "}
           <strong className="font-semibold tabular-nums text-ink">
             {compact(summary.totalCalories)} kcal
           </strong>
@@ -352,13 +412,12 @@ function compact(value: number): string {
 
 /** Only when there is genuinely nothing — one logged day already draws. */
 function NothingYet({ range }: { range: TrendRange }) {
-  const span = range === "week" ? "week" : range === "month" ? "month" : "year";
   return (
     <div className="mt-5 flex flex-col items-center rounded-xl bg-muted px-4 py-6 text-center">
       <span className="grid size-10 place-items-center rounded-xl bg-surface text-ink-faint">
         <LineChart size={19} />
       </span>
-      <p className="mt-3 text-[13px] font-medium">Nothing logged this {span}</p>
+      <p className="mt-3 text-[13px] font-medium">Nothing logged this {range}</p>
       <p className="mt-1 max-w-xs text-[12px] leading-relaxed text-ink-muted">
         Log a meal and it will show up here from the very first day.
       </p>
@@ -372,11 +431,6 @@ function longLabel(bucket: TrendBucket, range: TrendRange): string {
     const [year] = bucket.key.split("-");
     return `${bucket.label} ${year}`;
   }
-  const [, month, day] = bucket.key.split("-");
-  return `${bucket.label} ${Number(day)} ${MONTHS[Number(month) - 1]}`;
+  return `${bucket.label} ${dayAndMonth(bucket.key)}`;
 }
 
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];

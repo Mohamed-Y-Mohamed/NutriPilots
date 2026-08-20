@@ -55,7 +55,7 @@ Deno.serve(async (request) => {
   const { user, authorization } = authed;
   const client = userClient(authorization);
 
-  let body: { message?: unknown; imagePath?: unknown };
+  let body: { message?: unknown; imagePath?: unknown; today?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -63,6 +63,13 @@ Deno.serve(async (request) => {
   }
 
   const imagePath = typeof body.imagePath === "string" ? body.imagePath : null;
+
+  // The client sends its own calendar day because only it knows the timezone.
+  // Falling back to UTC keeps an older build working, at the cost this exists
+  // to avoid.
+  const today = typeof body.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.today)
+    ? body.today
+    : new Date().toISOString().slice(0, 10);
   const message = typeof body.message === "string"
     ? body.message.trim().slice(0, MAX_MESSAGE_CHARS)
     : "";
@@ -107,7 +114,7 @@ Deno.serve(async (request) => {
   try {
     return imagePath
       ? await handlePhoto({ client, userId: user.id, message, imagePath, usage })
-      : await handleChat({ client, userId: user.id, message, usage });
+      : await handleChat({ client, userId: user.id, message, today, usage });
   } catch (error) {
     if (error instanceof AiError) {
       console.error("[ai-chat] model chain failed", error.message);
@@ -144,15 +151,16 @@ Deno.serve(async (request) => {
 // ---------------------------------------------------------------------------
 
 async function handleChat(
-  { client, userId, message, usage }: {
+  { client, userId, message, today, usage }: {
     client: ReturnType<typeof userClient>;
     userId: string;
     message: string;
+    today: string;
     usage: UsageState;
   },
 ) {
   const [context, history] = await Promise.all([
-    buildContext(client, userId, message),
+    buildContext(client, userId, message, today),
     loadHistory(client, userId),
   ]);
 
@@ -270,9 +278,11 @@ async function handlePhoto(
   // worse than no card: it looks like an answer and logs a meal that never
   // happened. Say the photo could not be read instead.
   if (isFood && priced.length === 0) {
+    // Length and provider, not the text: the body describes what somebody ate,
+    // and log retention is not the place for it.
     console.error(
-      `[ai-chat] photo returned no usable ingredients from ${result.provider}/${result.model}:`,
-      result.text.slice(0, 300),
+      `[ai-chat] photo returned no usable ingredients from ${result.provider}/${result.model}, ` +
+        `${result.text.length} chars`,
     );
     return json({
       error: "The AI could not make out what was on the plate. Please try a clearer photo.",
@@ -381,8 +391,8 @@ async function buildContext(
   client: ReturnType<typeof userClient>,
   userId: string,
   message: string,
+  today: string,
 ): Promise<string> {
-  const today = new Date().toISOString().slice(0, 10);
   const wantsHistory = needsIntakeHistory(message);
 
   const [profileResult, diaryResult, intakeHistory] = await Promise.all([

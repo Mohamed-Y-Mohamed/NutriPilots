@@ -102,9 +102,22 @@ describe("checkTargets", () => {
   });
 
   it("allows a tenth outside a style's band before it stops being that style", () => {
-    // Keto tops out at 10% carbs; 11% is inside the grace and still keto.
+    // Keto tops out at 10% carbs; 11% is exactly the grace and still keto.
     const edge: DailyTargets = { calories: 2000, protein: 100, carbs: 55, fat: 149, fibre: 25 };
     expect(checkTargets(edge, MAN).style).toBe("ketogenic");
+  });
+
+  it("stops calling it a style once every band's grace is spent", () => {
+    // 2000 kcal as 40% protein, 20% carbs, 40% fat. Past low-carb's protein
+    // ceiling even with the grace, short of high-protein's carb floor, far too
+    // much carbohydrate for keto and far too much fat for low-fat or balanced.
+    const past: DailyTargets = { calories: 2000, protein: 200, carbs: 100, fat: 89, fibre: 25 };
+    const result = checkTargets(past, MAN);
+
+    expect(result.style).toBeNull();
+    // Unrecognised is a note, not a refusal.
+    expect(result.errors).toEqual({});
+    expect(result.warnings.carbs).toBeTruthy();
   });
 
   it("warns rather than blocks when the split matches nothing recognised", () => {

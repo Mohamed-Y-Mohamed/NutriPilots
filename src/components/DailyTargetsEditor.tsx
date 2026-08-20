@@ -56,6 +56,16 @@ export function DailyTargetsEditor() {
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(targets));
+  /**
+   * The split every calorie change is measured against.
+   *
+   * Not the previous keystroke. Scaling is multiplicative, so rescaling from
+   * whatever the last character left behind compounds: typing "1500" one digit
+   * at a time multiplies an already-scaled figure four times over. Worse, the
+   * intermediate values round — "2400" backspaced to "2" scales protein to 0,
+   * and nothing multiplied by zero ever comes back.
+   */
+  const [baseline, setBaseline] = useState<DailyTargets>(() => targets);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -66,6 +76,7 @@ export function DailyTargetsEditor() {
 
   const open = () => {
     setDraft(draftFrom(targets));
+    setBaseline(targets);
     setError(null);
     setSaved(false);
     setEditing(true);
@@ -85,22 +96,23 @@ export function DailyTargetsEditor() {
     const cleaned = raw.replace(/[^\d]/g, "");
 
     if (field !== "calories") {
-      setDraft((current) => ({ ...current, [field]: cleaned }));
+      const next = { ...draft, [field]: cleaned };
+      setDraft(next);
+      // A macro changed by hand is a deliberate shift in the balance, so it
+      // becomes what any later calorie change scales from.
+      setBaseline(numbersFrom(next));
       return;
     }
 
-    setDraft((current) => {
-      const before = numbersFrom(current);
-      const wanted = cleaned.trim() === "" ? NaN : Number(cleaned);
+    const wanted = cleaned.trim() === "" ? NaN : Number(cleaned);
 
-      // Mid-typing, or nothing to scale from: change the one field and wait.
-      if (!Number.isFinite(wanted) || !Number.isFinite(before.calories) || before.calories <= 0) {
-        return { ...current, calories: cleaned };
-      }
+    // Mid-typing, or nothing to scale from: change the one field and wait.
+    if (!Number.isFinite(wanted) || baseline.calories <= 0) {
+      setDraft({ ...draft, calories: cleaned });
+      return;
+    }
 
-      const scaled = rescaleTargets(before, wanted);
-      return { ...draftFrom(scaled), calories: cleaned };
-    });
+    setDraft({ ...draftFrom(rescaleTargets(baseline, wanted)), calories: cleaned });
   };
 
   const save = async () => {
@@ -108,16 +120,9 @@ export function DailyTargetsEditor() {
     setBusy(true);
     setError(null);
     try {
-      await saveTargets(
-        {
-          calories: Math.round(values.calories),
-          protein: Math.round(values.protein),
-          carbs: Math.round(values.carbs),
-          fat: Math.round(values.fat),
-          fibre: Math.round(values.fibre),
-        },
-        "manual",
-      );
+      // Already whole numbers: draftFrom rounds, and edit() strips anything
+      // that is not a digit before it reaches state.
+      await saveTargets(values, "manual");
       setEditing(false);
       setSaved(true);
     } catch (reason) {
@@ -166,7 +171,7 @@ export function DailyTargetsEditor() {
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
           {FIELDS.map(({ key, label, unit }) => (
             <div key={key} className="min-w-0">
-              <dd className="text-[17px] font-semibold tabular-nums">
+              <dd className="text-[15px] font-semibold tabular-nums">
                 {Math.round(targets[key]).toLocaleString()}
                 <span className="ml-1 text-[12px] font-normal text-ink-muted">{unit}</span>
               </dd>

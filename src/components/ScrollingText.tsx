@@ -57,10 +57,7 @@ export function ScrollingText({
       // A couple of pixels of slack stops a name that fits almost exactly from
       // twitching back and forth over a rounding difference.
       const overflow = inner.scrollWidth - outer.clientWidth;
-      setDistance((current) => {
-        const next = overflow > 2 ? overflow : 0;
-        return next === current ? current : next;
-      });
+      setDistance(overflow > 2 ? overflow : 0);
     };
 
     measure();

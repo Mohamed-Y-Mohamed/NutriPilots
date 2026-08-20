@@ -2,7 +2,6 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  Plus,
   Target,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,24 +17,10 @@ import {
 } from "../components/ui";
 import { CoachBanner } from "../components/CoachBanner";
 import { IntakeTrends } from "../components/IntakeTrends";
-import { QuickAdd } from "../components/QuickAdd";
 import { TodayFood } from "../components/TodayFood";
-import type { MealName } from "../types";
 import { addDays, formatDayLabel, localDateKey } from "../lib/dates";
 import { useAppData } from "../state/AppDataContext";
 
-
-/**
- * Whichever meal it probably is. Breakfast at nine and dinner at seven is a
- * better opening guess than always offering lunch.
- */
-function mealForNow(): MealName {
-  const hour = new Date().getHours();
-  if (hour < 11) return "Breakfast";
-  if (hour < 16) return "Lunch";
-  if (hour < 21) return "Dinner";
-  return "Snacks";
-}
 
 /** Marks that the photo-estimate hint has had its one showing. */
 const COACH_HINT_SEEN = "nutripilot.coachHintSeen";
@@ -53,13 +38,12 @@ export function DashboardPage() {
   } = useAppData();
   const navigate = useNavigate();
 
-  // Which meal new food goes to. Shared, so the Add on a meal and the picker
-  // in the card below cannot disagree.
-  const [meal, setMeal] = useState<MealName>(mealForNow);
-
-  // First run only. Written the moment it is shown, so a reload settles it.
+  // First run only, and only for the person who can actually see it: someone
+  // with goals set finds it in the add-food page instead, and burning the flag
+  // on their behalf would rob a later reset of its one showing.
   const [showCoachHint, setShowCoachHint] = useState(false);
   useEffect(() => {
+    if (hasProfile) return;
     try {
       if (localStorage.getItem(COACH_HINT_SEEN)) return;
       localStorage.setItem(COACH_HINT_SEEN, "1");
@@ -67,7 +51,7 @@ export function DashboardPage() {
     } catch {
       // Private browsing with storage blocked. Not worth a banner either way.
     }
-  }, []);
+  }, [hasProfile]);
 
   const remaining = targets.calories - totals.calories;
   const percent = Math.min(100, (totals.calories / Math.max(targets.calories, 1)) * 100);
@@ -80,11 +64,6 @@ export function DashboardPage() {
       <PageHeader
         title={firstName ? `Hello, ${firstName}` : "Your day"}
         subtitle="Everything you have logged, and how much room is left."
-        actions={
-          <Button variant="primary" onClick={() => navigate("/diary")}>
-            <Plus size={17} /> Add food
-          </Button>
-        }
       />
 
       <div className="mb-5 flex items-center justify-between rounded-xl border border-line bg-surface p-1">
@@ -112,11 +91,7 @@ export function DashboardPage() {
         <GoalPrompt onStart={() => navigate("/goals")} />
       ) : (
       <div className="grid gap-4">
-        {/* Reading the day and adding to it are two cards, sharing one idea of
-            which meal is in play: tapping Add on a meal above points the adder
-            at it. */}
-        <TodayFood onAddTo={setMeal} />
-        <QuickAdd meal={meal} onMealChange={setMeal} />
+        <TodayFood onAddTo={(meal) => navigate(`/diary?meal=${meal}`)} />
 
         <div className="grid gap-4 md:grid-cols-2">
         <Card className="min-w-0 p-5 sm:p-6">
@@ -141,10 +116,10 @@ export function DashboardPage() {
         <Card className="min-w-0 p-5 sm:p-6">
           <h2 className="text-sm font-medium text-ink-muted">Macros</h2>
           <div className="mt-5 grid gap-4">
-            <MacroBar label="Protein" value={totals.protein} target={targets.protein} colour="var(--color-brand)" />
-            <MacroBar label="Carbs" value={totals.carbs} target={targets.carbs} colour="var(--color-lime)" />
-            <MacroBar label="Fat" value={totals.fat} target={targets.fat} colour="#e5a663" />
-            <MacroBar label="Fibre" value={totals.fibre} target={targets.fibre} colour="#8fa9d8" />
+            <MacroBar label="Protein" value={totals.protein} target={targets.protein} colour="var(--color-macro-protein)" />
+            <MacroBar label="Carbs" value={totals.carbs} target={targets.carbs} colour="var(--color-macro-carbs)" />
+            <MacroBar label="Fat" value={totals.fat} target={targets.fat} colour="var(--color-macro-fat)" />
+            <MacroBar label="Fibre" value={totals.fibre} target={targets.fibre} colour="var(--color-macro-fibre)" />
           </div>
         </Card>
         </div>

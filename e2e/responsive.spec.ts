@@ -339,6 +339,8 @@ test.describe("signed-in layout", () => {
       // The one food card and the trends card both have to be there and behave.
       await expect(page.getByRole("heading", { name: "Your food today" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Your intake" })).toBeVisible();
+      // Adding lives on its own page, not in a second card here.
+      await expect(page.getByRole("heading", { name: "Add food" })).toHaveCount(0);
 
       // Today's food is shown once, not in a second section further down.
       await expect(page.getByRole("button", { name: /^Remove Slow-roasted/ })).toHaveCount(1);
@@ -440,7 +442,7 @@ test.describe("signed-in layout", () => {
     await expect(page.getByRole("button", { name: "Remove Porridge" })).toBeVisible();
   });
 
-  test("adding from a meal points the adder at that meal", async ({ page }) => {
+  test("adding from a meal opens the food search on that meal", async ({ page }) => {
     await signIn(page);
     await stubSupabase(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -452,11 +454,10 @@ test.describe("signed-in layout", () => {
 
     await page.getByRole("button", { name: "Add to breakfast" }).click();
 
-    const adder = page.getByRole("tablist", { name: "Add to" });
-    await expect(adder.getByRole("tab", { name: "Breakfast" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(page).toHaveURL(/\/diary\?meal=Breakfast/);
+    await expect(
+      page.getByRole("tablist", { name: "Meal" }).getByRole("tab", { name: "Breakfast" }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 
   /**
@@ -492,6 +493,50 @@ test.describe("signed-in layout", () => {
     // And the way in is a button they choose to press, not a redirect.
     await page.getByRole("button", { name: "Set your goals" }).click();
     await expect(page).toHaveURL(/\/goals/);
+  });
+
+  /**
+   * A month is thirty-one bars in about 300 points. Per-bar buttons made each
+   * one an eight-point target, so a tap landed on a neighbour and showed a
+   * plausible, wrong day with nothing to signal the miss.
+   */
+  test("a tap anywhere on a dense chart selects the day under it", async ({ page }) => {
+    await signIn(page);
+    await stubSupabase(page);
+    await page.setViewportSize({ width: 390, height: 900 });
+
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { name: "Your intake" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByRole("tablist", { name: "Range" }).getByRole("tab", { name: "Month" }).click();
+
+    const plot = page.getByRole("img", { name: /Intake chart/ });
+    await expect(plot).toBeVisible();
+    const box = (await plot.boundingBox())!;
+
+    // Before any tap the card shows the range average.
+    await expect(page.getByText("Average per logged day")).toBeVisible();
+
+    // "Thu 20 Aug" — the readout's own label for a single day, and the only
+    // text on the page shaped like that.
+    const dayLabel = page.getByText(/^\w{3} \d{1,2} \w{3}$/);
+
+    await page.mouse.click(box.x + 4, box.y + box.height / 2);
+    await expect(page.getByText("Average per logged day")).toHaveCount(0);
+    await expect(dayLabel).toBeVisible();
+    const first = await dayLabel.innerText();
+
+    // Moving on from there is done with the keyboard rather than a second tap:
+    // the point is that a neighbouring day is reachable at all, and a key press
+    // proves it without depending on where a coordinate lands.
+    await plot.press("ArrowRight");
+    await expect(dayLabel).not.toHaveText(first);
+
+    // And the far end of the chart is a different day again, which is the
+    // whole point — every bar reachable, not just whichever the thumb hits.
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
+    await expect(dayLabel).not.toHaveText(first);
   });
 
   test("a long food name keeps its controls inside the row", async ({ page }) => {

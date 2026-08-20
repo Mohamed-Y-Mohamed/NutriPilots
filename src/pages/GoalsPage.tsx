@@ -257,10 +257,10 @@ export function GoalsPage() {
               <p className="text-[13px] text-ink-muted">kcal per day</p>
 
               <dl className="mt-5 border-t border-line-soft">
-                <TargetRow label="Protein" value={`${targets.protein}g`} colour="var(--color-brand)" />
-                <TargetRow label="Carbs" value={`${targets.carbs}g`} colour="var(--color-lime)" />
-                <TargetRow label="Fat" value={`${targets.fat}g`} colour="#e5a663" />
-                <TargetRow label="Fibre" value={`${targets.fibre}g`} colour="#8fa9d8" />
+                <TargetRow label="Protein" value={`${targets.protein}g`} colour="var(--color-macro-protein)" />
+                <TargetRow label="Carbs" value={`${targets.carbs}g`} colour="var(--color-macro-carbs)" />
+                <TargetRow label="Fat" value={`${targets.fat}g`} colour="var(--color-macro-fat)" />
+                <TargetRow label="Fibre" value={`${targets.fibre}g`} colour="var(--color-macro-fibre)" />
               </dl>
 
               <p className="mt-4 text-[11px] leading-relaxed text-ink-faint">
