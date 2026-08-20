@@ -570,7 +570,12 @@ function EstimateCard({
         amount: 1,
         unit: "meal",
         meal,
-        calories: round1(logged.calories),
+        // Whole kcal, tenths of a gram — the same shape every other way of
+        // logging food produces (see scaleIngredient and scaleRecipe). Nothing
+        // in the app has ever shown a fractional calorie: every readout rounds
+        // it away, so the decimal was precision no one could see, on the one
+        // path that stored it differently from all the others.
+        calories: Math.round(logged.calories),
         protein: round1(logged.protein),
         carbs: round1(logged.carbs),
         fat: round1(logged.fat),

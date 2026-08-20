@@ -22,37 +22,67 @@ export const DEFAULT_PROFILE: UserProfile = {
   targetsSetAt: null,
 };
 
-// One string literal, not a concatenation: supabase-js reads the column list at
-// the type level to work out the shape of `data`, and a `+` leaves it with no
-// literal to read.
+// One string literal each, not a concatenation: supabase-js reads the column
+// list at the type level to work out the shape of `data`, and a `+` leaves it
+// with no literal to read.
 const FIELDS =
   "display_name,age,calculation_sex,height_cm,weight_kg,target_weight_kg,activity_level,goal_mode,theme,onboarded,target_calories,target_protein_g,target_carbs_g,target_fat_g,target_fibre_g,targets_source,targets_set_at";
 
+/** The same list without the target columns, for a database that predates them. */
+const FIELDS_WITHOUT_TARGETS =
+  "display_name,age,calculation_sex,height_cm,weight_kg,target_weight_kg,activity_level,goal_mode,theme,onboarded";
+
+/** PostgREST's code for "you asked for a column this table does not have". */
+const UNDEFINED_COLUMN = "42703";
+
+/**
+ * The signed-in user's profile, or null if they have never saved one.
+ *
+ * The app and the database are deployed separately and by hand, so a build can
+ * reach a project whose migrations have not been run yet. Being unable to
+ * override a target is a missing feature; failing the whole load is an unusable
+ * app, because the diary, the goals screen and the coach all wait on this call.
+ * So the newer columns are asked for and done without if they are not there.
+ */
 export async function loadProfile(): Promise<UserProfile | null> {
-  const { data, error } = await requireSupabase()
-    .from("user_profiles")
-    .select(FIELDS)
-    .maybeSingle();
+  const client = requireSupabase();
 
-  if (error) throw new Error(error.message);
-  if (!data) return null;
+  const full = await client.from("user_profiles").select(FIELDS).maybeSingle();
 
+  if (full.error?.code === UNDEFINED_COLUMN) {
+    console.warn(
+      "[profile] the target columns are missing from this database — run the " +
+        "target_overrides migration. Custom daily targets are unavailable until then.",
+    );
+
+    const basic = await client.from("user_profiles").select(FIELDS_WITHOUT_TARGETS).maybeSingle();
+    if (basic.error) throw new Error(basic.error.message);
+    return basic.data ? toProfile(basic.data) : null;
+  }
+
+  if (full.error) throw new Error(full.error.message);
+  return full.data ? toProfile(full.data) : null;
+}
+
+/** Reads whichever columns came back, defaulting anything absent. */
+function toProfile(row: Record<string, unknown>): UserProfile {
   return {
-    name: data.display_name ?? "",
-    age: Number(data.age ?? DEFAULT_PROFILE.age),
-    calculationSex: (data.calculation_sex ?? DEFAULT_PROFILE.calculationSex) as UserProfile["calculationSex"],
-    heightCm: Number(data.height_cm ?? DEFAULT_PROFILE.heightCm),
-    weightKg: Number(data.weight_kg ?? DEFAULT_PROFILE.weightKg),
-    targetWeightKg: Number(data.target_weight_kg ?? DEFAULT_PROFILE.targetWeightKg),
-    activityLevel: (data.activity_level ?? DEFAULT_PROFILE.activityLevel) as UserProfile["activityLevel"],
-    goalMode: (data.goal_mode ?? DEFAULT_PROFILE.goalMode) as UserProfile["goalMode"],
-    theme: (data.theme ?? "system") as UserProfile["theme"],
-    onboarded: Boolean(data.onboarded),
-    // All five have to be present to mean anything. A half-written override is
-    // treated as none at all rather than as a plan with holes in it.
-    targetOverride: readTargets(data),
-    targetsSource: (data.targets_source ?? null) as TargetsSource | null,
-    targetsSetAt: (data.targets_set_at ?? null) as string | null,
+    name: (row.display_name as string) ?? "",
+    age: Number(row.age ?? DEFAULT_PROFILE.age),
+    calculationSex: (row.calculation_sex ?? DEFAULT_PROFILE.calculationSex) as UserProfile["calculationSex"],
+    heightCm: Number(row.height_cm ?? DEFAULT_PROFILE.heightCm),
+    weightKg: Number(row.weight_kg ?? DEFAULT_PROFILE.weightKg),
+    targetWeightKg: Number(row.target_weight_kg ?? DEFAULT_PROFILE.targetWeightKg),
+    activityLevel: (row.activity_level ?? DEFAULT_PROFILE.activityLevel) as UserProfile["activityLevel"],
+    goalMode: (row.goal_mode ?? DEFAULT_PROFILE.goalMode) as UserProfile["goalMode"],
+    theme: (row.theme ?? "system") as UserProfile["theme"],
+    onboarded: Boolean(row.onboarded),
+    // All five have to be present to mean anything. A half-written override —
+    // or a database that has none of the columns — is treated as no override at
+    // all rather than as a plan with holes in it.
+    targetOverride: readTargets(row),
+    targetsSource: (row.targets_source ?? null) as TargetsSource | null,
+    targetsSetAt: (row.targets_set_at ?? null) as string | null,
   };
 }
 
@@ -76,62 +106,93 @@ function readTargets(row: Record<string, unknown>): DailyTargets | null {
 }
 
 export async function saveProfile(userId: string, profile: UserProfile): Promise<void> {
-  const { error } = await requireSupabase()
-    .from("user_profiles")
-    .upsert(
-      {
-        user_id: userId,
-        display_name: profile.name || null,
-        age: profile.age,
-        calculation_sex: profile.calculationSex,
-        height_cm: profile.heightCm,
-        weight_kg: profile.weightKg,
-        target_weight_kg: profile.targetWeightKg,
-        activity_level: profile.activityLevel,
-        goal_mode: profile.goalMode,
-        theme: profile.theme,
-        onboarded: profile.onboarded,
-        target_calories: profile.targetOverride?.calories ?? null,
-        target_protein_g: profile.targetOverride?.protein ?? null,
-        target_carbs_g: profile.targetOverride?.carbs ?? null,
-        target_fat_g: profile.targetOverride?.fat ?? null,
-        target_fibre_g: profile.targetOverride?.fibre ?? null,
-        targets_source: profile.targetOverride ? profile.targetsSource : null,
-        targets_set_at: profile.targetOverride ? (profile.targetsSetAt ?? new Date().toISOString()) : null,
-      },
-      { onConflict: "user_id" },
-    );
+  const body = {
+    user_id: userId,
+    display_name: profile.name || null,
+    age: profile.age,
+    calculation_sex: profile.calculationSex,
+    height_cm: profile.heightCm,
+    weight_kg: profile.weightKg,
+    target_weight_kg: profile.targetWeightKg,
+    activity_level: profile.activityLevel,
+    goal_mode: profile.goalMode,
+    theme: profile.theme,
+    onboarded: profile.onboarded,
+  };
 
-  if (error) throw new Error(error.message);
+  const targets = {
+    target_calories: profile.targetOverride?.calories ?? null,
+    target_protein_g: profile.targetOverride?.protein ?? null,
+    target_carbs_g: profile.targetOverride?.carbs ?? null,
+    target_fat_g: profile.targetOverride?.fat ?? null,
+    target_fibre_g: profile.targetOverride?.fibre ?? null,
+    targets_source: profile.targetOverride ? profile.targetsSource : null,
+    targets_set_at: profile.targetOverride
+      ? (profile.targetsSetAt ?? new Date().toISOString())
+      : null,
+  };
+
+  const client = requireSupabase();
+  const { error } = await client
+    .from("user_profiles")
+    .upsert({ ...body, ...targets }, { onConflict: "user_id" });
+
+  if (!error) return;
+  if (error.code !== UNDEFINED_COLUMN) throw new Error(error.message);
+
+  // Same reasoning as loadProfile: a database that predates the target columns
+  // must not stop someone saving their height and weight. Setting an override
+  // genuinely cannot work there, so that is refused rather than silently
+  // dropped — the alternative is a Save button that reports success and
+  // changes nothing.
+  if (profile.targetOverride) {
+    throw new Error(
+      "Custom daily targets need a database update that has not been applied yet. " +
+        "Run the target_overrides migration, then try again.",
+    );
+  }
+
+  const retry = await client.from("user_profiles").upsert(body, { onConflict: "user_id" });
+  if (retry.error) throw new Error(retry.error.message);
 }
 
 /** Removes body stats and goals but keeps the account and its theme choice. */
 export async function resetHealthData(userId: string, theme: UserProfile["theme"]): Promise<void> {
-  const { error } = await requireSupabase()
-    .from("user_profiles")
-    .upsert(
-      {
-        user_id: userId,
-        display_name: null,
-        age: null,
-        calculation_sex: null,
-        height_cm: null,
-        weight_kg: null,
-        target_weight_kg: null,
-        activity_level: null,
-        goal_mode: null,
-        theme,
-        onboarded: false,
-        target_calories: null,
-        target_protein_g: null,
-        target_carbs_g: null,
-        target_fat_g: null,
-        target_fibre_g: null,
-        targets_source: null,
-        targets_set_at: null,
-      },
-      { onConflict: "user_id" },
-    );
+  const cleared = {
+    user_id: userId,
+    display_name: null,
+    age: null,
+    calculation_sex: null,
+    height_cm: null,
+    weight_kg: null,
+    target_weight_kg: null,
+    activity_level: null,
+    goal_mode: null,
+    theme,
+    onboarded: false,
+  };
 
-  if (error) throw new Error(error.message);
+  const client = requireSupabase();
+  const { error } = await client.from("user_profiles").upsert(
+    {
+      ...cleared,
+      target_calories: null,
+      target_protein_g: null,
+      target_carbs_g: null,
+      target_fat_g: null,
+      target_fibre_g: null,
+      targets_source: null,
+      targets_set_at: null,
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (!error) return;
+  if (error.code !== UNDEFINED_COLUMN) throw new Error(error.message);
+
+  // Columns that do not exist hold nothing to erase, so a database without
+  // them is already in the state this is trying to reach. "Delete my data"
+  // must never be the thing that fails.
+  const retry = await client.from("user_profiles").upsert(cleared, { onConflict: "user_id" });
+  if (retry.error) throw new Error(retry.error.message);
 }

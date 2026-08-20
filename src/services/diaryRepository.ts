@@ -66,6 +66,16 @@ export async function addDiaryEntry(
     .select(FIELDS)
     .single();
 
+  // 22P02 here means a column is still `integer` in this database while the
+  // schema declares numeric — the table predates that migration and `create
+  // table if not exists` never re-typed it. The raw Postgres text names a
+  // value and no way forward, so it is replaced with one.
+  if (error?.code === "22P02" && /type integer/i.test(error.message)) {
+    throw new Error(
+      "This food could not be saved: your database still stores calories as whole " +
+        "numbers only. Run the diary_entries_numeric_columns migration to fix it.",
+    );
+  }
   if (error) throw new Error(error.message);
   return toEntry(data as DiaryRow);
 }

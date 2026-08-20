@@ -2,7 +2,7 @@ import { LineChart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, cx, Segmented, Skeleton } from "./ui";
 import { rangeBounds, summariseTrend, type TrendBucket, type TrendRange } from "../lib/trends";
-import { loadDailyTotals } from "../services/analyticsRepository";
+import { loadDailyTotals, MissingMigrationError } from "../services/analyticsRepository";
 import type { DayTotals } from "../types";
 
 const RANGES = [
@@ -46,7 +46,14 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
         if (live) setDays(loaded);
       })
       .catch((reason: unknown) => {
-        if (live) setError(reason instanceof Error ? reason.message : "Could not load your history.");
+        if (!live) return;
+        // Nothing is wrong with their data, so this is stated plainly rather
+        // than as a failure they might think they caused.
+        if (reason instanceof MissingMigrationError) {
+          setError(reason.message);
+          return;
+        }
+        setError(reason instanceof Error ? reason.message : "Could not load your history.");
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -82,7 +89,7 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
       </div>
 
       {error ? (
-        <Alert tone="error" className="mt-4">
+        <Alert tone="warn" className="mt-4">
           {error}
         </Alert>
       ) : loading ? (
