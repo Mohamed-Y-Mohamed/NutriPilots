@@ -1,5 +1,6 @@
-import { Pencil, RotateCcw, Sparkles } from "lucide-react";
+import { Pencil, RotateCcw, Sparkles, Target } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Alert, Button, cx } from "./ui";
 import { rescaleTargets } from "../lib/nutrition";
 import { checkTargets, type TargetCheck } from "../lib/targetRanges";
@@ -49,7 +50,9 @@ function numbersFrom(draft: Draft): DailyTargets {
  * app that cannot be told about it is an app they will stop using.
  */
 export function DailyTargetsEditor() {
-  const { profile, targets, calculatedTargets, saveTargets } = useAppData();
+  const { profile, hasProfile, targets, calculatedTargets, saveTargets } = useAppData();
+
+  const navigate = useNavigate();
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(targets));
@@ -138,6 +141,24 @@ export function DailyTargetsEditor() {
       setBusy(false);
     }
   };
+
+  // Before the goals are set there is nothing honest to put here. The formula
+  // on an empty profile falls through to the safety floor, and showing 1,200
+  // kcal captioned "worked out from your height and weight" would be inventing
+  // a target out of a height and weight nobody has given.
+  if (!hasProfile) {
+    return (
+      <div className="min-w-0">
+        <p className="text-[13px] leading-relaxed text-ink-muted">
+          Your daily calories and macros are worked out from your height, weight, age, activity
+          and goal. Add those and they will appear here, ready to adjust.
+        </p>
+        <Button size="sm" variant="primary" className="mt-4" onClick={() => navigate("/goals")}>
+          <Target size={15} /> Set your goals
+        </Button>
+      </div>
+    );
+  }
 
   if (!editing) {
     return (

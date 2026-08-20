@@ -216,7 +216,27 @@ async function signIn(page: Page) {
   );
 }
 
-async function stubSupabase(page: Page) {
+const FRESH_PROFILE = {
+  display_name: null,
+  age: null,
+  calculation_sex: null,
+  height_cm: null,
+  weight_kg: null,
+  target_weight_kg: null,
+  activity_level: null,
+  goal_mode: null,
+  theme: "light",
+  onboarded: false,
+  target_calories: null,
+  target_protein_g: null,
+  target_carbs_g: null,
+  target_fat_g: null,
+  target_fibre_g: null,
+  targets_source: null,
+  targets_set_at: null,
+};
+
+async function stubSupabase(page: Page, { fresh = false } = {}) {
   await page.route(`https://${PROJECT_REF}.supabase.co/**`, async (route) => {
     const url = route.request().url();
     const json = (body: unknown) =>
@@ -260,8 +280,8 @@ async function stubSupabase(page: Page) {
     }
     if (url.includes("/rpc/daily_totals")) return json(dailyTotals());
     if (url.includes("/rpc/recent_foods")) return json(RECENT_FOODS);
-    if (url.includes("/user_profiles")) return json(PROFILE);
-    if (url.includes("/diary_entries")) return json(DIARY);
+    if (url.includes("/user_profiles")) return json(fresh ? FRESH_PROFILE : PROFILE);
+    if (url.includes("/diary_entries")) return json(fresh ? [] : DIARY);
     if (url.includes("/chat_messages")) return json([]);
     if (url.includes("/functions/v1/")) return json({ used: 2, dailyLimit: 20 });
 
@@ -384,6 +404,41 @@ test.describe("signed-in layout", () => {
     // Back inside the range and it goes away again.
     await calories.fill("2200");
     await expect(hint).toHaveCount(0);
+  });
+
+  /**
+   * Someone who has signed up and not filled anything in must be shown the
+   * prompt, never a number. The formula on an empty profile returns the safety
+   * floor, and 1,200 kcal presented as "worked out from your height and
+   * weight" is a figure nobody gave being passed off as one they did — which
+   * is also how you teach people to enter fake stats to get past a gate.
+   */
+  test("a brand-new account is asked to set goals, not shown invented ones", async ({ page }) => {
+    await signIn(page);
+    await stubSupabase(page, { fresh: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.goto("/today");
+    await expect(page.getByRole("heading", { name: /Let.s get you set up/ })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Nothing that implies a target exists.
+    await expect(page.getByText(/kcal left|kcal over/)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Your intake" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Quick add" })).toHaveCount(0);
+
+    // Nor in Settings, which is where the invented figure used to appear.
+    await page.goto("/settings");
+    await page.getByRole("button", { name: /Daily targets/ }).click();
+
+    await expect(page.getByRole("button", { name: "Set your goals" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit targets" })).toHaveCount(0);
+    await expect(page.getByText("1,200")).toHaveCount(0);
+
+    // And the way in is a button they choose to press, not a redirect.
+    await page.getByRole("button", { name: "Set your goals" }).click();
+    await expect(page).toHaveURL(/\/goals/);
   });
 
   test("a long food name keeps its controls inside the row", async ({ page }) => {

@@ -391,7 +391,7 @@ async function buildContext(
       // One literal, not a concatenation: supabase-js reads the column list at
       // the type level and a `+` leaves it nothing to read.
       .select(
-        "age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode, target_calories, target_protein_g, target_carbs_g, target_fat_g, target_fibre_g, targets_source",
+        "age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode, onboarded, target_calories, target_protein_g, target_carbs_g, target_fat_g, target_fibre_g, targets_source",
       )
       .eq("user_id", userId)
       .maybeSingle(),
@@ -438,10 +438,16 @@ async function buildContext(
           `${Math.round(Number(profile.target_fibre_g ?? 0))}g fibre ` +
           `(set ${profile.targets_source === "coach" ? "by you, and accepted" : "by the user"}).`,
       );
-    } else {
+    } else if (profile.onboarded) {
       lines.push(
         "- Current daily targets: worked out from the stats above by the app's own formula; " +
           "the user has not overridden them.",
+      );
+    } else {
+      lines.push(
+        "- No targets yet: the user has signed up but not filled in their goals, so there are " +
+          "no body stats to work them out from. Do not quote a target, and do not guess one. " +
+          "Suggest setting goals if it would help the answer.",
       );
     }
   } else {
