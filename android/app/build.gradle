@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Release signing is read from android/keystore.properties, which is gitignored
+// so the upload key never enters the repository. Without that file the release
+// build still configures — it just produces an unsigned artefact, which is what
+// a CI machine or a fresh clone should get. See docs/DEPLOY.md.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasSigningConfig = keystorePropertiesFile.exists()
+if (hasSigningConfig) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "com.nutripilots.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +18,8 @@ android {
         applicationId "com.nutripilots.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
-        versionName "1.4"
+        versionCode 5
+        versionName "1.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,11 +27,33 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasSigningConfig) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            // Left off deliberately. Capacitor discovers plugins by reflection,
+            // so R8 can strip a plugin that only fails once the app is running
+            // on a device. Turning it on is a post-launch change to make with a
+            // device test behind it, not a release-day one.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+    // Netlify's SPA routing files and the forms probe are web-host concerns.
+    // They are dead weight inside an APK, so they are not packaged.
+    androidResources {
+        ignoreAssetsPattern '!_headers:!_redirects:!__forms.html'
     }
 }
 

@@ -1,0 +1,86 @@
+# The gate that has to go green before anything is published.
+#
+# Netlify builds and deploys on its own when main moves, and it does not run the
+# tests. This workflow is what makes a broken main visible: same commands as a
+# local check, in the same order, cheapest first.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push makes an in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches NODE_VERSION in netlify.toml. If one moves, move both.
+          node-version: "22"
+          cache: npm
+
+      # `ci` not `install`: it installs exactly the lockfile and fails if
+      # package.json and the lock have drifted, which `install` would paper over.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `npm run build` typechecks via `tsc -b` anyway, but running it alone
+      # first means a type error reports in seconds instead of after a bundle.
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Dev-only advisories are noise here — nothing in devDependencies ships to
+      # a browser or into the APK. This fails only on something that does.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  android:
+    name: Android release build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Capacitor 8 compiles against Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      # Builds the web bundle and copies it into the Android project, so this
+      # job proves the exact thing `npm run android:bundle` does locally.
+      - name: Sync web assets into Android
+        run: npm run cap:sync
+
+      # No keystore.properties on CI, so this produces an unsigned bundle. That
+      # is the point: it proves the project compiles and packages. Signing stays
+      # on the release machine that holds the upload key.
+      - name: Assemble release bundle (unsigned)
+        working-directory: android
+        run: ./gradlew bundleRelease --no-daemon

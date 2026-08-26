@@ -1,4 +1,8 @@
 /*
+  # Netlify serves HTTPS but does not send HSTS unless asked. Without it the
+  # very first visit over http:// is still strippable. Subdomains included
+  # because nothing is served from one.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ replacement for allowBackup. Both transports are refused outright
+  rather than filtered, because nothing this app stores locally is worth moving:
+  the session can be re-established by signing in, and the diary lives in
+  Supabase, not on the device.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="file" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="file" />
+    </device-transfer>
+</data-extraction-rules>

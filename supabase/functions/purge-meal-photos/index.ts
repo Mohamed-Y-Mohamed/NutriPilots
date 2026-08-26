@@ -15,13 +15,35 @@ import { adminClient } from "../_shared/supabase.ts";
 
 const ORPHAN_AGE_MS = 60 * 60 * 1000; // 1 hour
 
+/**
+ * Compares two secrets without letting the comparison itself describe them.
+ *
+ * `a !== b` returns the moment two bytes differ, so how long it took is a
+ * measurement of how much of the secret the caller got right. Hashing first
+ * makes both sides a fixed 32 bytes — so length does not leak either — and the
+ * loop below always reads all 32 whatever it finds.
+ */
+async function secretMatches(provided: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+
+  const left = new Uint8Array(a);
+  const right = new Uint8Array(b);
+  let difference = 0;
+  for (let i = 0; i < left.length; i++) difference |= left[i] ^ right[i];
+  return difference === 0;
+}
+
 Deno.serve(async (request) => {
   const early = preflight(request);
   if (early) return early;
 
   const expected = Deno.env.get("PURGE_SECRET");
   const provided = request.headers.get("x-purge-secret");
-  if (!expected || provided !== expected) {
+  if (!expected || !provided || !(await secretMatches(provided, expected))) {
     return json({ error: "Not authorised" }, 401);
   }
 
