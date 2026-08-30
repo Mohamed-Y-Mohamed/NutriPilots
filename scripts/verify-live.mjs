@@ -124,11 +124,41 @@ try {
       message: "In one sentence, why does protein help with satiety?",
     });
     assert(typeof response.reply === "string" && response.reply.length > 10, "empty reply");
-    assert(response.provider, "no provider reported");
-    console.log(`      answered by ${response.provider}/${response.model}`);
-    if (response.attempts?.length) {
-      console.log(`      fell through: ${response.attempts.join(" → ")}`);
-    }
+
+    // Which provider and model answered used to come back in the body and be
+    // shown in Settings. It is recorded on the row and written to the function
+    // logs instead: a reply that names our AI vendor tells anyone with the
+    // network tab open how the coach is built.
+    const leak = JSON.stringify(response).match(
+      /groq|openrouter|llama|gpt-|gemini|cloudflare|"(provider|model|attempts|build)"/i,
+    );
+    assert(!leak, `the reply body describes the backend: ${leak?.[0]}`);
+  });
+
+  /**
+   * The pair used to be written by one INSERT, and Postgres stamps every row in
+   * a single statement with the same transaction clock. Ordering by created_at
+   * then had nothing to break the tie, so reopening the coach could show the
+   * reply above the question that prompted it.
+   */
+  await check("an exchange is stored in the order it happened", async () => {
+    const marker = `Ordering check ${Date.now()}: reply with the single word OK.`;
+    await callFunction("ai-chat", { message: marker });
+
+    const rows = await rest(
+      "/rest/v1/chat_messages?select=role,content,created_at" +
+        "&order=created_at.desc,role.asc&limit=60",
+    );
+    const ordered = rows.reverse();
+
+    const at = ordered.findIndex((row) => row.content === marker);
+    assert(at !== -1, "the message just sent is not in the transcript");
+    assert(ordered[at].role === "user", `the question came back as ${ordered[at].role}`);
+    assert(ordered[at + 1]?.role === "assistant", "no answer directly below the question");
+    assert(
+      ordered[at].created_at !== ordered[at + 1].created_at,
+      "question and answer still share a timestamp — the pair can reorder at any time",
+    );
   });
 
   await check("coach refuses an off-topic question", async () => {
@@ -286,6 +316,30 @@ try {
       body: { p_call_type: "chat" },
     });
     assert(chat.daily_limit === 20, `the limit became ${chat.daily_limit} after a self-granted plan`);
+  });
+
+  /**
+   * The free tier shipped at one call a minute on every bucket, which made a
+   * follow-up question a refusal. The daily caps are what bound the spend; this
+   * figure only exists to stop one client hammering the provider, and it does
+   * that fine well above 1.
+   */
+  await check("the free tier allows a follow-up within the same minute", async () => {
+    // Read as the service role: ai_plan_limits has RLS on with no policies at
+    // all, so that a signed-in user cannot raise their own caps.
+    const limits = await serviceRequest(
+      "/rest/v1/ai_plan_limits?plan=eq.free&select=call_type,daily_limit,per_minute_limit",
+    );
+    const chat = limits.find((row) => row.call_type === "chat");
+    assert(chat, "no free-tier chat limit row");
+    assert(
+      chat.per_minute_limit > 1,
+      `chat is capped at ${chat.per_minute_limit}/minute — the burst-limit migration has not been applied`,
+    );
+    assert(chat.daily_limit === 35, `the daily cap moved to ${chat.daily_limit}, expected 35`);
+    console.log(
+      `      chat ${chat.daily_limit}/day at ${chat.per_minute_limit}/minute`,
+    );
   });
 
   await check("nobody can wipe their own counters", async () => {

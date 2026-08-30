@@ -17,6 +17,7 @@ import { Alert, Button, cx, inputClass, labelClass } from "../components/ui";
 import { assessPassword, isValidEmail, type PasswordStrength } from "../lib/validation";
 import { useAuth } from "../state/AuthContext";
 
+import { presentError } from "../lib/errors";
 type Mode = "signup" | "signin" | "reset";
 
 const STRENGTH_LABEL: Record<PasswordStrength, string> = {
@@ -89,7 +90,7 @@ export function AuthPage() {
         setNotice("If that email has an account, a reset link is on its way.");
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Something went wrong.");
+      setError(presentError(reason, "Something went wrong."));
     } finally {
       setBusy(false);
     }
@@ -422,7 +423,7 @@ function NewPasswordScreen({
       await updatePassword(password);
       onDone();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not update your password.");
+      setError(presentError(reason, "Could not update your password."));
     } finally {
       setBusy(false);
     }

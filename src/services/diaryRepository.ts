@@ -1,3 +1,4 @@
+import { userError } from "../lib/errors";
 import { requireSupabase } from "../lib/supabase";
 import type { DiaryDraft, DiaryEntry, MealName, RecentFood } from "../types";
 
@@ -68,13 +69,17 @@ export async function addDiaryEntry(
 
   // 22P02 here means a column is still `integer` in this database while the
   // schema declares numeric — the table predates that migration and `create
-  // table if not exists` never re-typed it. The raw Postgres text names a
-  // value and no way forward, so it is replaced with one.
+  // table if not exists` never re-typed it. Which migration to run is ours to
+  // know; the reader gets the one thing they can act on, which is that the
+  // food did not save and it was not something they typed.
   if (error?.code === "22P02" && /type integer/i.test(error.message)) {
-    throw new Error(
-      "This food could not be saved: your database still stores calories as whole " +
-        "numbers only. Run the diary_entries_numeric_columns migration to fix it.",
-    );
+    if (import.meta.env.DEV) {
+      console.error(
+        "[nutripilot] diary columns are still integer — run the " +
+          "diary_entries_numeric_columns migration.",
+      );
+    }
+    throw userError("That food could not be saved just now. Please try again in a moment.");
   }
   if (error) throw new Error(error.message);
   return toEntry(data as DiaryRow);
@@ -88,7 +93,7 @@ export async function removeDiaryEntry(id: string): Promise<void> {
 export async function clearDiary(): Promise<void> {
   const client = requireSupabase();
   const { data } = await client.auth.getUser();
-  if (!data.user) throw new Error("You need to be signed in.");
+  if (!data.user) throw userError("You need to be signed in.");
 
   const { error } = await client.from("diary_entries").delete().eq("user_id", data.user.id);
   if (error) throw new Error(error.message);

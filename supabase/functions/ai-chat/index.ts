@@ -22,6 +22,12 @@ import {
   type UsageState,
 } from "../_shared/usage.ts";
 
+// Written once when the isolate starts, so "is the new version actually
+// deployed?" is answerable from the function logs. It used to travel back in
+// every reply and be shown in Settings, which told every user which build of
+// our backend they were talking to — a detail that is ours, not theirs.
+console.log(`[ai-chat] build ${FUNCTION_BUILD}`);
+
 const HISTORY_LIMIT = 12;
 /**
  * The lowest daily figure a proposed plan may carry, whatever the model says.
@@ -177,29 +183,32 @@ async function handleChat(
   const { reply, suggestions } = splitSuggestions(withoutPlan.reply);
   const plan = withoutPlan.plan;
 
+  const { asked, answered } = exchangeTimes();
+
   const { data: inserted } = await client
     .from("chat_messages")
     .insert([
-      { user_id: userId, role: "user", content: message },
+      { user_id: userId, role: "user", content: message, created_at: asked },
       {
         user_id: userId,
         role: "assistant",
         content: reply,
         provider: result.provider,
         model: result.model,
+        created_at: answered,
       },
     ])
-    .select("id, role, created_at");
+    .select("id, role");
 
+  // Which provider answered, which model, and how many were tried first are
+  // recorded on the row and in the logs. They are not sent back: the app never
+  // showed them, and a reply that names our AI vendor tells anyone with the
+  // network tab open how the coach is built.
   return json({
-    build: FUNCTION_BUILD,
     reply,
     suggestions,
     plan,
-    provider: result.provider,
-    model: result.model,
-    attempts: result.attempts,
-    messageIds: (inserted ?? []).map((row) => row.id),
+    messageId: assistantIdOf(inserted),
     usage,
   });
 }
@@ -310,6 +319,8 @@ async function handlePhoto(
     ? `${estimate.dish_name} — around ${estimate.calories} kcal. ${estimate.summary}`
     : `That photo does not look like food. ${estimate.summary}`;
 
+  const { asked, answered } = exchangeTimes();
+
   const { data: messages } = await client
     .from("chat_messages")
     .insert([
@@ -318,6 +329,7 @@ async function handlePhoto(
         role: "user",
         content: message,
         image_path: null,
+        created_at: asked,
       },
       {
         user_id: userId,
@@ -326,12 +338,12 @@ async function handlePhoto(
         provider: result.provider,
         model: result.model,
         estimate: isFood ? estimate : null,
+        created_at: answered,
       },
     ])
     .select("id, role");
 
-  const assistantId =
-    (messages ?? []).find((row) => row.role === "assistant")?.id ?? null;
+  const assistantId = assistantIdOf(messages);
 
   // Keep a text record of what the photo contained for 30 days. The image
   // itself is already gone.
@@ -351,11 +363,7 @@ async function handlePhoto(
     .single();
 
   return json({
-    build: FUNCTION_BUILD,
     reply,
-    provider: result.provider,
-    model: result.model,
-    attempts: result.attempts,
     estimate: isFood ? estimate : null,
     analysisId: analysis?.id ?? null,
     messageId: assistantId,
@@ -369,6 +377,34 @@ async function deletePhoto(
 ) {
   const { error } = await client.storage.from("meal-photos").remove([imagePath]);
   if (error) console.error("[ai-chat] failed to delete photo", error.message);
+}
+
+// ---------------------------------------------------------------------------
+// Writing an exchange down
+// ---------------------------------------------------------------------------
+
+/**
+ * The two timestamps a question and its answer are stored with.
+ *
+ * They are set here rather than left to the column default because `now()` in
+ * Postgres is the *transaction* clock, not the wall clock: two rows written by
+ * one INSERT get byte-identical values. Ordering by created_at then has nothing
+ * to break the tie, so the transcript is free to come back with the reply above
+ * the question it answers — which is exactly what it did.
+ *
+ * A millisecond apart is enough to make the order a fact rather than a
+ * coincidence, and it is far below anything a reader could notice.
+ */
+function exchangeTimes(): { asked: string; answered: string } {
+  const now = Date.now();
+  return {
+    asked: new Date(now).toISOString(),
+    answered: new Date(now + 1).toISOString(),
+  };
+}
+
+function assistantIdOf(rows: Array<{ id: string; role: string }> | null): string | null {
+  return rows?.find((row) => row.role === "assistant")?.id ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +547,11 @@ async function loadHistory(
     .select("role, content")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
+    // Rows written before exchangeTimes() existed still share a timestamp, and
+    // a model shown its own reply above the question it answered starts the
+    // next turn confused. Ascending role puts "assistant" first here, which is
+    // "user" first once the page is reversed below — the order it happened in.
+    .order("role", { ascending: true })
     .limit(HISTORY_LIMIT);
 
   return (data ?? [])

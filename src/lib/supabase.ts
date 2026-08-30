@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { userError } from "./errors";
 
 /**
  * Both values are public by design — the publishable key is meant to ship in
@@ -37,9 +38,16 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
  */
 export function requireSupabase(): SupabaseClient {
   if (!supabase) {
-    throw new Error(
-      "NutriPilot is not connected to Supabase. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.",
-    );
+    // The reader can do nothing about a missing environment variable, and
+    // naming the ones we wanted describes our deployment to them. The console
+    // note is for whoever built it; the thrown message is for whoever is
+    // looking at the screen.
+    if (import.meta.env.DEV) {
+      console.error(
+        "[nutripilot] no Supabase client: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.",
+      );
+    }
+    throw userError("NutriPilot is not connected to its server yet. Please try again later.");
   }
   return supabase;
 }

@@ -9,10 +9,11 @@ import {
   type TrendRange,
   type TrendSummary,
 } from "../lib/trends";
-import { loadDailyTotals, MissingMigrationError } from "../services/analyticsRepository";
+import { loadDailyTotals } from "../services/analyticsRepository";
 import { useAppData } from "../state/AppDataContext";
 import type { DayTotals } from "../types";
 
+import { presentError } from "../lib/errors";
 const RANGES = [
   { value: "week" as const, label: "Week" },
   { value: "month" as const, label: "Month" },
@@ -55,13 +56,10 @@ export function IntakeTrends({ target, today }: { target: number; today: string 
       })
       .catch((reason: unknown) => {
         if (!live) return;
-        // Nothing is wrong with their data, so this is stated plainly rather
-        // than as a failure they might think they caused.
-        if (reason instanceof MissingMigrationError) {
-          setError(reason.message);
-          return;
-        }
-        setError(reason instanceof Error ? reason.message : "Could not load your history.");
+        // MissingMigrationError already carries its own wording — nothing is
+        // wrong with their data, and it says so — so presentError passes it
+        // through untouched. Everything else lands on the fallback.
+        setError(presentError(reason, "Could not load your history."));
       })
       .finally(() => {
         if (live) setLoading(false);

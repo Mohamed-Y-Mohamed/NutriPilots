@@ -16,6 +16,9 @@ android/local.properties
 android/.idea/
 android/captures/
 android/app/release/
+# Where `npm run android:bundle` leaves the Play Store artifact: a build output,
+# several megabytes, and rebuilt from source every time.
+release/
 *.keystore
 *.jks
 

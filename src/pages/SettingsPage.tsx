@@ -39,6 +39,7 @@ import { useAuth } from "../state/AuthContext";
 import { useTheme } from "../state/ThemeContext";
 import type { ThemePreference } from "../types";
 
+import { presentError } from "../lib/errors";
 const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; icon: typeof Sun }> = [
   { value: "system", label: "System", icon: Monitor },
   { value: "light", label: "Light", icon: Sun },
@@ -66,16 +67,6 @@ export function SettingsPage() {
   const [showTerms, setShowTerms] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
-  // Recorded the last time the coach answered, so a half-finished hand-deploy
-  // is visible here instead of showing up as mysteriously missing features.
-  const functionBuild = (() => {
-    try {
-      return localStorage.getItem("nutripilot.functionBuild");
-    } catch {
-      return null;
-    }
-  })();
-
   const run = async (action: Exclude<PendingAction, null>) => {
     if (!user) return;
     setBusy(true);
@@ -97,7 +88,7 @@ export function SettingsPage() {
         setNotice("Your health data, goals and diary have been deleted.");
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "That did not work. Please try again.");
+      setError(presentError(reason, "That did not work. Please try again."));
     } finally {
       setBusy(false);
       setPending(null);
@@ -253,18 +244,15 @@ export function SettingsPage() {
         <CollapsibleCard
           icon={<Info size={17} />}
           title="About"
-          description="Which version of the app and coach you are running."
+          description="Which version of the app you are running."
         >
+          {/* The app's own build only, and only because it is what support
+              would ask for. Which build of the server answered, and what it
+              runs on, are ours to know. */}
           <dl className="grid gap-2 text-[13px]">
             <div className="flex justify-between gap-3">
-              <dt className="text-ink-muted">App build</dt>
+              <dt className="text-ink-muted">App version</dt>
               <dd className="font-medium tabular-nums">{__BUILD_ID__}</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-ink-muted">Coach build</dt>
-              <dd className="truncate font-medium">
-                {functionBuild ?? "unknown — send the coach a message"}
-              </dd>
             </div>
           </dl>
         </CollapsibleCard>
@@ -330,7 +318,7 @@ function ChangePasswordSheet({ onClose }: { onClose: () => void }) {
       await updatePassword(password);
       setDone(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not update your password.");
+      setError(presentError(reason, "Could not update your password."));
     } finally {
       setBusy(false);
     }
@@ -436,7 +424,7 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
       await signOutLocal();
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : "Could not delete the account. Please try again.",
+        presentError(reason, "Could not delete the account. Please try again."),
       );
       setBusy(false);
     }

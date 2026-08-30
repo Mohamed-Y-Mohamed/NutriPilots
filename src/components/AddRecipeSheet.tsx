@@ -37,6 +37,7 @@ import {
 } from "../services/libraryRepository";
 import type { EstimateLine, FoodReview, RecipeDraft, RecipeScan } from "../types";
 
+import { presentError } from "../lib/errors";
 const MAX_DESCRIPTION = 1500;
 
 /** The reference `recipes` table requires exactly one of these, so user recipes match. */
@@ -124,7 +125,7 @@ export function AddRecipeSheet({
       const prepared = await prepareImage(file);
       await runScan(prepared.blob);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not read that image.");
+      setError(presentError(reason, "Could not read that image."));
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -146,7 +147,7 @@ export function AddRecipeSheet({
 
       applyDraft(result);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not read that photo.");
+      setError(presentError(reason, "Could not read that photo."));
     } finally {
       setScanning(false);
     }
@@ -209,7 +210,7 @@ export function AddRecipeSheet({
       applyDraft(result);
       setDescribing(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not work that one out.");
+      setError(presentError(reason, "Could not work that one out."));
     } finally {
       setScanning(false);
     }
@@ -284,7 +285,7 @@ export function AddRecipeSheet({
       }
       setNeedsConfirm(Boolean(result.requiresConfirmation));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save that recipe.");
+      setError(presentError(reason, "Could not save that recipe."));
     } finally {
       setBusy(false);
     }

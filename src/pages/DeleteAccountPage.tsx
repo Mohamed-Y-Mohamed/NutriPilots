@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, Button, Card, Field, inputClass } from "../components/ui";
 import { submitDeletionRequest } from "../lib/deletionRequest";
 import { useAuth } from "../state/AuthContext";
+import { presentError } from "../lib/errors";
 
 /**
  * The public account deletion page Google Play requires.
@@ -32,7 +33,7 @@ export function DeleteAccountPage() {
       await submitDeletionRequest({ email: email.trim(), reason: reason.trim() });
       setStatus("sent");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Something went wrong.");
+      setError(presentError(submitError, "We could not send your request."));
       setStatus("idle");
     }
   }

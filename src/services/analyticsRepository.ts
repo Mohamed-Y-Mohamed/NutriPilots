@@ -1,10 +1,17 @@
+import { UserFacingError } from "../lib/errors";
 import { requireSupabase } from "../lib/supabase";
 import type { DayTotals } from "../types";
 
-/** The daily_totals function has not been created in this database yet. */
-export class MissingMigrationError extends Error {
+/**
+ * The routine that adds up a day has not been deployed to this database yet.
+ *
+ * The reader is told trends are not ready, not which migration is outstanding:
+ * that is our problem, and the only thing they could do with the answer is
+ * worry about the state of the app.
+ */
+export class MissingMigrationError extends UserFacingError {
   constructor() {
-    super("Your trends need a database update that has not been applied yet.");
+    super("Trends are not available just yet. Please check back shortly.");
     this.name = "MissingMigrationError";
   }
 }

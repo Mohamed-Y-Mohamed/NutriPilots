@@ -9,7 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const limit = vi.fn();
-const order = vi.fn(() => ({ limit }));
+// The query orders twice before it limits, so the fake has to be chainable the
+// same way the client is.
+const order: ReturnType<typeof vi.fn> = vi.fn(() => ({ order, limit }));
 const select = vi.fn(() => ({ order }));
 const eq = vi.fn();
 const update = vi.fn(() => ({ eq }));
@@ -75,6 +77,48 @@ describe("loadChatHistory", () => {
 
     await expect(loadChatHistory()).rejects.toThrow("permission denied");
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A question and its answer used to be written by one INSERT, which stamps
+   * both rows with the same transaction clock. Sorting on that alone left the
+   * pair in whatever order the planner fancied, and reopening the coach could
+   * show the reply above the message that prompted it.
+   */
+  it("breaks a tied timestamp on role so a reply cannot outrank its question", async () => {
+    limit.mockResolvedValueOnce({ data: [], error: null });
+
+    await loadChatHistory();
+
+    expect(order).toHaveBeenNthCalledWith(1, "created_at", { ascending: false });
+    expect(order).toHaveBeenNthCalledWith(2, "role", { ascending: true });
+  });
+
+  it("puts the question above the answer when both share a timestamp", async () => {
+    const at = "2026-08-20T12:00:00Z";
+    // Newest-first, as the query asks for it: within the tie the secondary sort
+    // yields assistant then user, which reverses into the order it happened.
+    limit.mockResolvedValueOnce({
+      data: [
+        { id: "a", role: "assistant", content: "Around 733 kcal.", created_at: at },
+        { id: "q", role: "user", content: "What is in this?", created_at: at },
+      ],
+      error: null,
+    });
+
+    const messages = await loadChatHistory();
+
+    expect(messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(messages[0].text).toBe("What is in this?");
+  });
+
+  it("does not read which AI provider or model answered", async () => {
+    limit.mockResolvedValueOnce({ data: [], error: null });
+
+    await loadChatHistory();
+
+    expect(select).toHaveBeenCalledWith(expect.not.stringContaining("provider"));
+    expect(select).toHaveBeenCalledWith(expect.not.stringContaining("model"));
   });
 });
 

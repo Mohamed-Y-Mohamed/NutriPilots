@@ -16,6 +16,7 @@ import {
 import { loadRecipes } from "../services/foodSearch";
 import type { DietTag, Recipe } from "../types";
 
+import { presentError } from "../lib/errors";
 const FILTERS: Array<{ value: DietTag | "all"; label: string }> = [
   { value: "all", label: "All" },
   { value: "weight-loss", label: "Weight loss" },
@@ -61,7 +62,7 @@ export function RecipesPage() {
     void loadRecipes()
       .then(setRecipes)
       .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "Could not load recipes."),
+        setError(presentError(reason, "Could not load recipes.")),
       )
       .finally(() => setLoading(false));
   }, []);

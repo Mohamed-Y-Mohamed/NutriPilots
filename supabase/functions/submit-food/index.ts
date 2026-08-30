@@ -210,8 +210,19 @@ Deno.serve(async (request) => {
   const { data, error } = await client.from(table).insert(row).select().single();
 
   if (error) {
+    // The message names the table, the column and the constraint it tripped
+    // over. That is for the logs. What comes back is the one thing the user can
+    // act on — whether this is theirs to fix, or ours.
     console.error("[submit-food] insert failed", error.message);
-    return json({ error: `Could not save: ${error.message}` }, 400);
+
+    // 23505 is a unique violation: they already have this one saved, and no
+    // amount of retrying will change that.
+    if (error.code === "23505") {
+      return json({
+        error: "You have already saved something with that name. Try a different one.",
+      }, 409);
+    }
+    return json({ error: "Could not save that just now. Please try again in a moment." }, 400);
   }
 
   return json({ saved: true, review, item: data }, 201);

@@ -1,3 +1,4 @@
+import { userError } from "../lib/errors";
 import { requireSupabase } from "../lib/supabase";
 import type { DailyTargets, TargetsSource, UserProfile } from "../types";
 
@@ -50,10 +51,15 @@ export async function loadProfile(): Promise<UserProfile | null> {
   const full = await client.from("user_profiles").select(FIELDS).maybeSingle();
 
   if (full.error?.code === UNDEFINED_COLUMN) {
-    console.warn(
-      "[profile] the target columns are missing from this database — run the " +
-        "target_overrides migration. Custom daily targets are unavailable until then.",
-    );
+    // Names a migration and a set of columns, so it stays out of a shipped
+    // console — a production console is somewhere users and their extensions
+    // can read, and a build strips this branch entirely.
+    if (import.meta.env.DEV) {
+      console.warn(
+        "[profile] the target columns are missing from this database — run the " +
+          "target_overrides migration. Custom daily targets are unavailable until then.",
+      );
+    }
 
     const basic = await client.from("user_profiles").select(FIELDS_WITHOUT_TARGETS).maybeSingle();
     if (basic.error) throw new Error(basic.error.message);
@@ -146,9 +152,17 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
   // dropped — the alternative is a Save button that reports success and
   // changes nothing.
   if (profile.targetOverride) {
-    throw new Error(
-      "Custom daily targets need a database update that has not been applied yet. " +
-        "Run the target_overrides migration, then try again.",
+    // Which migration is outstanding is ours to know and ours to run. The
+    // reader gets the part that concerns them: their body stats saved, their
+    // custom targets did not, and it is not something they did.
+    if (import.meta.env.DEV) {
+      console.error(
+        "[nutripilot] custom targets need the target_overrides migration — run it, then retry.",
+      );
+    }
+    throw userError(
+      "Custom daily targets are not available just yet — your other details were saved. " +
+        "Please try again later.",
     );
   }
 

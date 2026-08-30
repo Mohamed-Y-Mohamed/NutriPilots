@@ -156,7 +156,12 @@ export function Alert({
 }: PropsWithChildren<{ tone?: keyof typeof ALERT_TONES; className?: string }>) {
   return (
     <div
-      role={tone === "error" ? "alert" : undefined}
+      // An error interrupts; a warning waits its turn. Both have to be
+      // announced though — a warning is what appears when the coach stands its
+      // composer down, and a disabled send button with an explanation nobody
+      // hears is the same dead end for a screen reader that the original bug
+      // was for everyone else.
+      role={tone === "error" ? "alert" : tone === "warn" ? "status" : undefined}
       className={cx(
         "rounded-xl border px-3.5 py-3 text-[13px] leading-relaxed",
         ALERT_TONES[tone],

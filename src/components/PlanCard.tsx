@@ -4,6 +4,7 @@ import { Alert, Button } from "./ui";
 import { useAppData } from "../state/AppDataContext";
 import type { CoachPlan, DailyTargets } from "../types";
 
+import { presentError } from "../lib/errors";
 /**
  * New daily targets the coach has proposed, and the one tap that adopts them.
  *
@@ -33,7 +34,7 @@ export function PlanCard({
       await saveTargets(plan.targets, "coach");
       onApplied();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not update your targets.");
+      setError(presentError(reason, "Could not update your targets."));
     } finally {
       setBusy(false);
     }

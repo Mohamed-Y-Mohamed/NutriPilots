@@ -512,8 +512,21 @@ test.describe("signed-in layout", () => {
     await page.getByRole("tablist", { name: "Range" }).getByRole("tab", { name: "Month" }).click();
 
     const plot = page.getByRole("img", { name: /Intake chart/ });
-    await expect(plot).toBeVisible();
-    const box = (await plot.boundingBox())!;
+
+    // Switching range replaces the chart, and the week's chart answers to the
+    // same name as the month's. Asserting visibility can therefore pass against
+    // the outgoing element, which is then detached before it can be measured —
+    // a null box, and only under parallel load, where the swap is slow enough
+    // to land between the two calls. Polling for a real box waits for whichever
+    // chart is actually on the page to have settled.
+    let box: Awaited<ReturnType<typeof plot.boundingBox>> = null;
+    await expect
+      .poll(async () => {
+        box = await plot.boundingBox();
+        return box?.width ?? 0;
+      })
+      .toBeGreaterThan(0);
+    box = box!;
 
     // Before any tap the card shows the range average.
     await expect(page.getByText("Average per logged day")).toBeVisible();
