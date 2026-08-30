@@ -37,6 +37,7 @@ import type {
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
 
+import { presentError, userError } from "../lib/errors";
 interface AppDataValue {
   profile: UserProfile;
   /** False until the user has actually saved their goals. */
@@ -113,7 +114,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
 
       setDiary(entries);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load your data.");
+      setError(presentError(reason, "Could not load your data."));
     } finally {
       setIsLoading(false);
     }
@@ -136,7 +137,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
 
   const saveUserProfile = useCallback(
     async (next: UserProfile) => {
-      if (!user) throw new Error("Please sign in to save your goals.");
+      if (!user) throw userError("Please sign in to save your goals.");
       await saveProfile(user.id, next);
       setProfileState(next);
       setHasProfile(next.onboarded);
@@ -147,7 +148,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
 
   const saveTargets = useCallback(
     async (targets: DailyTargets | null, source: TargetsSource) => {
-      if (!user) throw new Error("Please sign in to change your targets.");
+      if (!user) throw userError("Please sign in to change your targets.");
       const next: UserProfile = {
         ...profile,
         targetOverride: targets,
@@ -164,7 +165,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
 
   const logFood = useCallback(
     async (draft: DiaryDraft) => {
-      if (!user) throw new Error("Please sign in to log food.");
+      if (!user) throw userError("Please sign in to log food.");
       const entry = await addEntry(user.id, draft);
       // Only the day on screen needs updating; other days refetch when opened.
       if (entry.date === date) setDiary((current) => [...current, entry]);
@@ -184,7 +185,7 @@ export function AppDataProvider({ children }: PropsWithChildren) {
   }, []);
 
   const clearHealthData = useCallback(async () => {
-    if (!user) throw new Error("Please sign in first.");
+    if (!user) throw userError("Please sign in first.");
     await clearDiaryRows();
     await resetHealthData(user.id, preference);
     setDiary([]);

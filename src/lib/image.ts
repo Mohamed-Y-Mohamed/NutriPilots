@@ -1,3 +1,5 @@
+import { userError } from "./errors";
+
 const MAX_DIMENSION = 1280;
 const JPEG_QUALITY = 0.82;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -14,10 +16,10 @@ export interface PreparedImage {
  */
 export async function prepareImage(file: File): Promise<PreparedImage> {
   if (!file.type.startsWith("image/")) {
-    throw new Error("Please choose an image file.");
+    throw userError("Please choose an image file.");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error("That photo is larger than 10 MB. Please choose a smaller one.");
+    throw userError("That photo is larger than 10 MB. Please choose a smaller one.");
   }
 
   const dataUrl = await readAsDataUrl(file);
@@ -27,7 +29,7 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   try {
     await image.decode();
   } catch {
-    throw new Error("That image could not be opened. Please try another photo.");
+    throw userError("That image could not be opened. Please try another photo.");
   }
 
   const scale = Math.min(1, MAX_DIMENSION / Math.max(image.width, image.height));

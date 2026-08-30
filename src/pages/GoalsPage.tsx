@@ -14,6 +14,7 @@ import { calculateDailyTargets } from "../lib/nutrition";
 import { useAppData } from "../state/AppDataContext";
 import type { ActivityLevel, GoalMode, UserProfile } from "../types";
 
+import { presentError } from "../lib/errors";
 const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string; detail: string }> = [
   { value: "sedentary", label: "Mostly sitting", detail: "Little or no exercise" },
   { value: "light", label: "Lightly active", detail: "1–2 sessions a week" },
@@ -96,7 +97,7 @@ export function GoalsPage() {
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2200);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save your goals.");
+      setError(presentError(reason, "Could not save your goals."));
     } finally {
       setBusy(false);
     }

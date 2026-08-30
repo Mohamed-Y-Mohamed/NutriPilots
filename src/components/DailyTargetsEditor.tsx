@@ -7,6 +7,7 @@ import { checkTargets, type TargetCheck } from "../lib/targetRanges";
 import { useAppData } from "../state/AppDataContext";
 import type { DailyTargets } from "../types";
 
+import { presentError } from "../lib/errors";
 type Field = keyof DailyTargets;
 
 const FIELDS: Array<{ key: Field; label: string; unit: string }> = [
@@ -126,7 +127,7 @@ export function DailyTargetsEditor() {
       setEditing(false);
       setSaved(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save your targets.");
+      setError(presentError(reason, "Could not save your targets."));
     } finally {
       setBusy(false);
     }
@@ -141,7 +142,7 @@ export function DailyTargetsEditor() {
       setEditing(false);
       setSaved(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not reset your targets.");
+      setError(presentError(reason, "Could not reset your targets."));
     } finally {
       setBusy(false);
     }

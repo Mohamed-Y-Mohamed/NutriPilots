@@ -38,6 +38,8 @@ import {
   type UsageState,
 } from "../types";
 
+import { presentError } from "../lib/errors";
+
 /** Today's remaining calls, per bucket. Null until the first read lands. */
 interface UsageAllowance {
   chat: UsageState | null;
@@ -50,6 +52,54 @@ function withUsage(usage: UsageState) {
     ...current,
     [usage.callType]: usage,
   });
+}
+
+/**
+ * A refusal that is about timing rather than anything being broken.
+ *
+ * Held in state so the composer can stand itself down for as long as it lasts.
+ * Before this existed the only thing a refusal did was print a sentence: the
+ * send button stayed live, the obvious next move was to press it again, and
+ * pressing it again inside the same window produced a second refusal — which
+ * is exactly what it looks like when an app has stopped working.
+ */
+interface Cooldown {
+  /** "burst" clears itself in seconds; "daily" lasts until the allowance resets. */
+  kind: "burst" | "daily";
+  /** Only used for "daily" — the burst wording is generated from the countdown. */
+  message: string;
+  /** Epoch milliseconds. */
+  until: number;
+}
+
+const LIMIT_CODES = ["rate_limit", "usage_limit", "daily_limit"];
+
+/** Whole seconds until `until`, never negative. */
+function secondsUntil(until: number | null): number {
+  if (until === null) return 0;
+  return Math.max(0, Math.ceil((until - Date.now()) / 1000));
+}
+
+/**
+ * Counts down to `until`, re-rendering once a second and stopping at zero. Pass
+ * null when there is nothing to wait for and no timer is started at all.
+ */
+function useSecondsUntil(until: number | null): number {
+  const [left, setLeft] = useState(() => secondsUntil(until));
+
+  useEffect(() => {
+    setLeft(secondsUntil(until));
+    if (until === null) return;
+
+    const id = window.setInterval(() => {
+      const next = secondsUntil(until);
+      setLeft(next);
+      if (next === 0) window.clearInterval(id);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [until]);
+
+  return left;
 }
 
 const SUGGESTIONS = [
@@ -70,7 +120,7 @@ export function CoachPage() {
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [limitReached, setLimitReached] = useState(false);
+  const [cooldown, setCooldown] = useState<Cooldown | null>(null);
   const [usage, setUsage] = useState<UsageAllowance>({ chat: null, vision: null });
 
   // Only a reply that arrived in this session is typed out. Replaying the
@@ -109,7 +159,7 @@ export function CoachPage() {
     try {
       setPhoto(await prepareImage(file));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not read that image.");
+      setError(presentError(reason, "Could not read that image."));
     }
   };
 
@@ -127,9 +177,44 @@ export function CoachPage() {
     }
   };
 
+  // What the current send would draw from. A photo and a message come out of
+  // different allowances, so being out of one says nothing about the other.
+  const bucket = photo ? usage.vision : usage.chat;
+  const noneLeftToday = bucket ? bucket.used >= bucket.dailyLimit : false;
+
+  const waitSeconds = useSecondsUntil(cooldown?.kind === "burst" ? cooldown.until : null);
+  const waiting = waitSeconds > 0;
+  const outOfCalls = cooldown?.kind === "daily" || noneLeftToday;
+  const blocked = waiting || outOfCalls;
+
+  /**
+   * The one line shown while a limit is in force. It replaces the error alert
+   * rather than joining it: two notices about the same refusal is one too many.
+   */
+  const limitNotice = (() => {
+    if (waiting) {
+      return waitSeconds === 1
+        ? "Give the coach a second to catch up — you can send again in 1 second."
+        : `Give the coach a second to catch up — you can send again in ${waitSeconds} seconds.`;
+    }
+    if (cooldown?.kind === "daily") return cooldown.message;
+    if (noneLeftToday && bucket) {
+      return `You have used all ${bucket.dailyLimit} of today's ` +
+        `${photo ? "photo estimates" : "coach messages"}. Your allowance resets in ` +
+        `${formatTimeUntil(bucket.resetsAt)} — everything else in the app still works.`;
+    }
+    return null;
+  })();
+
   const send = async (event?: FormEvent, overrideText?: string) => {
     event?.preventDefault();
     if (sending) return;
+
+    // The composer is already standing down with the reason on screen, so
+    // there is nothing to add and nothing to gain by asking the server again.
+    // This is the guard that matters: the button is disabled, but a suggestion
+    // chip calls straight through here.
+    if (blocked) return;
 
     // Some Android keyboards hold a word in composition without committing it,
     // so React's value can trail what the user can plainly see. The box itself
@@ -151,7 +236,7 @@ export function CoachPage() {
 
     setSending(true);
     setError(null);
-    setLimitReached(false);
+    setCooldown(null);
 
     const optimistic: ChatMessage = {
       id: `local-${crypto.randomUUID()}`,
@@ -197,23 +282,34 @@ export function CoachPage() {
       setPhoto(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (reason) {
-      const message =
-        reason instanceof Error ? reason.message : "The coach could not answer that.";
+      const message = presentError(reason, "The coach could not answer that.");
 
-      // Three different limits, all of them temporary rather than broken:
-      // "rate_limit" is a few seconds, "usage_limit" is this user's allowance
-      // for the day, and "daily_limit" is every AI provider out of quota at
-      // once. All read better as a warning than as a red error. The server
-      // words each one, so the only job here is the tone and the counts.
+      // Three different limits, none of them a fault: "rate_limit" is a few
+      // seconds, "usage_limit" is this user's allowance for the day, and
+      // "daily_limit" is the whole service out of quota. Each becomes a
+      // cooldown rather than a message, so the composer stands itself down for
+      // as long as it lasts instead of inviting a retry that cannot succeed.
       const payload =
         reason instanceof FunctionError
           ? (reason.payload as { code?: string; usage?: UsageState } | null)
           : null;
-      if (payload?.code && ["rate_limit", "usage_limit", "daily_limit"].includes(payload.code)) {
-        setLimitReached(true);
+
+      if (payload?.code && LIMIT_CODES.includes(payload.code)) {
         if (payload.usage) setUsage(withUsage(payload.usage));
+
+        if (payload.code === "rate_limit") {
+          // A second either way is not worth an argument, and rounding up is
+          // the side to be wrong on: a countdown that ends a moment early
+          // sends the user straight back into the same refusal.
+          const seconds = Math.max(1, payload.usage?.retryAfter ?? 30);
+          setCooldown({ kind: "burst", message, until: Date.now() + seconds * 1000 });
+        } else {
+          setCooldown({ kind: "daily", message, until: Date.now() });
+        }
+      } else {
+        setError(message);
       }
-      setError(message);
+
       setMessages((current) => current.filter((item) => item.id !== optimistic.id));
       setPrompt(text);
     } finally {
@@ -229,7 +325,7 @@ export function CoachPage() {
       await clearChatHistory(user.id);
       setMessages([]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not clear the chat.");
+      setError(presentError(reason, "Could not clear the chat."));
     }
   };
 
@@ -321,11 +417,18 @@ export function CoachPage() {
           </div>
         )}
 
-        {error && (
-          <Alert tone={limitReached ? "warn" : "error"} className="mb-2">
+        {/* A limit is a wait, not a fault, so it is never dressed as one — and
+            it takes the place of the error alert rather than stacking with it,
+            because both would be describing the same refusal. */}
+        {limitNotice ? (
+          <Alert tone="warn" className="mb-2">
+            {limitNotice}
+          </Alert>
+        ) : error ? (
+          <Alert tone="error" className="mb-2">
             {error}
           </Alert>
-        )}
+        ) : null}
 
         <div className="flex items-center gap-1.5 rounded-2xl border border-line bg-surface p-1.5">
           <input
@@ -359,7 +462,15 @@ export function CoachPage() {
             ref={promptRef}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder={photo ? "Say what this is…" : "Ask about food…"}
+            placeholder={
+              outOfCalls
+                ? "Back tomorrow…"
+                : waiting
+                  ? "Just a moment…"
+                  : photo
+                    ? "Say what this is…"
+                    : "Ask about food…"
+            }
             enterKeyHint="send"
             className="min-w-0 flex-1 bg-transparent px-1 text-[15px] outline-none"
           />
@@ -371,20 +482,30 @@ export function CoachPage() {
             // moves down with it and the tap lands where the button no longer
             // is — which reads as a send button that sometimes does nothing.
             onMouseDown={(event) => event.preventDefault()}
-            // Only ever disabled while a send is in flight. Greying it out on
-            // empty state looks tidier but takes the tap away entirely, and a
-            // keyboard holding a word in composition leaves state empty under
-            // text the user can see — so the button they are looking straight
-            // at stops responding. It stays tappable and says what is missing.
-            disabled={sending}
+            // Disabled only while a send is in flight, or while a limit means
+            // pressing it cannot possibly work. Greying it out on empty state
+            // looks tidier but takes the tap away entirely, and a keyboard
+            // holding a word in composition leaves state empty under text the
+            // user can see — so the button they are looking straight at stops
+            // responding. Empty keeps it tappable and says what is missing; a
+            // limit does the opposite, because the reason is already on screen
+            // and another tap only earns them a second refusal.
+            disabled={sending || blocked}
             aria-disabled={!hasText}
-            aria-label="Send"
+            aria-label={waiting ? `Send — available in ${waitSeconds} seconds` : "Send"}
             className={cx(
               "grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white transition-transform active:scale-90",
-              !hasText && "opacity-35",
+              (!hasText || blocked) && "opacity-35",
             )}
           >
-            <Send size={17} />
+            {/* The countdown sits on the button itself, where the tap would
+                have gone, so the wait is visible at the point of frustration
+                rather than only in a line of text above it. */}
+            {waiting ? (
+              <span className="text-[12px] font-semibold tabular-nums">{waitSeconds}</span>
+            ) : (
+              <Send size={17} />
+            )}
           </button>
         </div>
       </form>
@@ -633,7 +754,7 @@ function EstimateCard({
       // Today's totals were computed before this entry existed.
       void refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not add that to your diary.");
+      setError(presentError(reason, "Could not add that to your diary."));
     } finally {
       setBusy(false);
     }

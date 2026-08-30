@@ -10,6 +10,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { UserFacingError } from "../lib/errors";
 import { AddRecipeSheet } from "./AddRecipeSheet";
 
 const submitRecipe = vi.fn();
@@ -180,7 +181,7 @@ describe("describing a dish instead of photographing it", () => {
 
   it("surfaces a rate limit as the server worded it", async () => {
     estimateDishFromText.mockRejectedValue(
-      new Error("That is a lot at once — give it 20 seconds and try again."),
+      new UserFacingError("That is a lot at once — give it 20 seconds and try again."),
     );
     const user = userEvent.setup();
     render(<AddRecipeSheet onClose={vi.fn()} onSaved={vi.fn()} />);

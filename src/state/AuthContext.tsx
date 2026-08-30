@@ -7,6 +7,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { userError } from "../lib/errors";
 import { EMAIL_CONFIRMATION_URL, PASSWORD_RESET_URL } from "../lib/site";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
@@ -85,7 +86,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       updatePassword: async (password) => {
         const client = requireClient();
         const { error } = await client.auth.updateUser({ password });
-        if (error) throw new Error(friendlyAuthError(error.message));
+        if (error) throw userError(friendlyAuthError(error.message));
         setIsRecovering(false);
       },
 
@@ -106,7 +107,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           email: email.trim(),
           password,
         });
-        if (error) throw new Error(friendlyAuthError(error.message));
+        if (error) throw userError(friendlyAuthError(error.message));
       },
 
       signUp: async (email, password, name) => {
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             emailRedirectTo: EMAIL_CONFIRMATION_URL,
           },
         });
-        if (error) throw new Error(friendlyAuthError(error.message));
+        if (error) throw userError(friendlyAuthError(error.message));
 
         // With email confirmation switched off Supabase signs the new account
         // in straight away. The session is dropped here on purpose: the app
@@ -146,13 +147,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { error } = await client.auth.resetPasswordForEmail(email.trim(), {
           redirectTo: PASSWORD_RESET_URL,
         });
-        if (error) throw new Error(friendlyAuthError(error.message));
+        if (error) throw userError(friendlyAuthError(error.message));
       },
 
       signOut: async () => {
         if (!supabase) return;
         const { error } = await supabase.auth.signOut();
-        if (error) throw new Error(error.message);
+        if (error) throw userError(friendlyAuthError(error.message));
       },
 
       signOutLocal: async () => {
@@ -176,7 +177,7 @@ export function useAuth(): AuthContextValue {
 
 function requireClient() {
   if (!supabase) {
-    throw new Error("NutriPilot is not connected to its server yet. Please try again later.");
+    throw userError("NutriPilot is not connected to its server yet. Please try again later.");
   }
   return supabase;
 }
@@ -203,10 +204,12 @@ export function friendlyAuthError(message: string): string {
     return "That email address does not look right.";
   }
   if (lower.includes("error sending") || lower.includes("smtp")) {
-    return "We could not send the confirmation email. The mail service may be misconfigured — please try again shortly.";
+    return "We could not send the confirmation email just now. Please try again shortly.";
   }
   if (lower.includes("redirect") || lower.includes("requested path is invalid")) {
-    return "Sign-up is misconfigured: this app's return address is not on Supabase's allowed redirect list.";
+    // A misconfigured allow-list on our side. The reader cannot fix it and
+    // does not need to know how sign-in is wired up to wait for us to.
+    return "Sign-up is temporarily unavailable. Please try again later.";
   }
   if (lower.includes("signups not allowed") || lower.includes("signup is disabled")) {
     return "New sign-ups are currently disabled for this app.";
@@ -217,5 +220,10 @@ export function friendlyAuthError(message: string): string {
   if (lower.includes("session") && lower.includes("missing")) {
     return "That reset link has expired. Please request a new one.";
   }
-  return message;
+
+  // Anything unrecognised is written for a developer — it can name the auth
+  // provider, an internal table, or the exact database fault. None of that
+  // belongs on a sign-in screen, and none of it tells the reader what to do.
+  if (import.meta.env.DEV) console.error("[nutripilot] unmapped auth failure:", message);
+  return "That did not work. Please try again in a moment.";
 }

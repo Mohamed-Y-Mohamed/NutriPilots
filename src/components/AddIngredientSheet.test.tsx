@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { UserFacingError } from "../lib/errors";
 import { AddIngredientSheet } from "./AddIngredientSheet";
 
 const submitIngredient = vi.fn();
@@ -169,8 +170,14 @@ describe("AddIngredientSheet", () => {
   });
 
   it("reports a verification outage instead of silently saving", async () => {
+    // Thrown the way the real call throws it. The server writes this sentence
+    // for the reader, and that is what earns it a place on the screen: a bare
+    // Error would be some internal failure and would be replaced with wording
+    // the user can actually act on.
     submitIngredient.mockRejectedValue(
-      new Error("The verification service is unavailable, so nothing was saved."),
+      new UserFacingError(
+        "The verification service is unavailable, so nothing was saved. Please try again shortly.",
+      ),
     );
 
     const onSaved = vi.fn();

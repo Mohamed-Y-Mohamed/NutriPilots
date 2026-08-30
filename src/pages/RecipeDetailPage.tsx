@@ -26,6 +26,7 @@ import { getRecipe } from "../services/foodSearch";
 import { useAppData } from "../state/AppDataContext";
 import { MEALS, type MealName, type Recipe } from "../types";
 
+import { presentError } from "../lib/errors";
 /** "I used less / the usual / more" — the three answers people actually give. */
 const AMOUNT_STEPS = [
   { label: "Less", value: 0.6 },
@@ -50,7 +51,7 @@ export function RecipeDetailPage() {
     void getRecipe(recipeId, owned)
       .then(setRecipe)
       .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "Could not load this recipe."),
+        setError(presentError(reason, "Could not load this recipe.")),
       )
       .finally(() => setLoading(false));
   }, [recipeId, owned]);
@@ -279,7 +280,7 @@ function LogRecipeCard({ recipe }: { recipe: Recipe }) {
       void refresh();
       window.setTimeout(() => setAdded(false), 2000);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not add this to your diary.");
+      setError(presentError(reason, "Could not add this to your diary."));
     } finally {
       setBusy(false);
     }

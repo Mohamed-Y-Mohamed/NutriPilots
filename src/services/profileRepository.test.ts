@@ -123,7 +123,10 @@ describe("saveProfile against a database missing the target columns", () => {
         targetsSource: "manual",
         targetsSetAt: null,
       }),
-    ).rejects.toThrow(/database update/i);
+      // Refused rather than silently dropped, and worded for the person who
+      // pressed Save. Which migration is outstanding is ours to run, not theirs
+      // to read about on a settings screen.
+    ).rejects.toThrow(/custom daily targets are not available/i);
 
     // Nothing was written on the second attempt, because there was none.
     expect(upsert).toHaveBeenCalledTimes(1);

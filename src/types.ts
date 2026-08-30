@@ -287,9 +287,13 @@ export interface UsageState {
   dailyLimit: number;
   /** Midnight UTC tomorrow, as an ISO instant. */
   resetsAt: string;
+  /**
+   * Seconds to wait before trying again, when a call was refused for arriving
+   * too quickly. Absent on a plain read of the allowance, which is not a
+   * refusal and has nothing to wait for.
+   */
+  retryAfter?: number;
 }
-
-export type AiProvider = "groq" | "openrouter";
 
 export interface ChatMessage {
   id: string;
@@ -302,7 +306,6 @@ export interface ChatMessage {
   suggestions?: MealSuggestion[];
   /** Revised daily targets the coach proposed, pending the user's approval. */
   plan?: CoachPlan | null;
-  provider?: AiProvider | null;
   createdAt: string;
   /** Set once the user has logged this estimate, so the card stops offering it. */
   loggedAt?: string;

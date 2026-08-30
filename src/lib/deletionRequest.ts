@@ -6,6 +6,8 @@
  * at build time so the form exists on Netlify's side; this posts to it.
  */
 
+import { userError } from "./errors";
+
 export const DELETION_FORM_NAME = "account-deletion";
 
 export interface DeletionRequest {
@@ -32,7 +34,7 @@ export async function submitDeletionRequest(
   });
 
   if (!response.ok) {
-    throw new Error(
+    throw userError(
       "We could not send your request. Please email us, or delete your account from the app.",
     );
   }

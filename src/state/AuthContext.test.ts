@@ -34,8 +34,16 @@ describe("friendlyAuthError", () => {
     );
   });
 
-  it("names a disallowed redirect as a configuration problem", () => {
-    expect(friendlyAuthError("requested path is invalid")).toMatch(/allowed redirect list/i);
+  /**
+   * A misconfigured redirect allow-list is ours to fix. Telling the person
+   * signing up which list is wrong describes our deployment to them and leaves
+   * them with nothing to do about it either way.
+   */
+  it("treats a disallowed redirect as our problem, without describing it", () => {
+    const message = friendlyAuthError("requested path is invalid");
+
+    expect(message).toMatch(/temporarily unavailable/i);
+    expect(message).not.toMatch(/redirect|supabase|allow.?list/i);
   });
 
   it("recognises the everyday cases", () => {
@@ -45,7 +53,18 @@ describe("friendlyAuthError", () => {
     expect(friendlyAuthError("Signups not allowed for this instance")).toMatch(/disabled/i);
   });
 
-  it("passes an unrecognised message through unchanged", () => {
-    expect(friendlyAuthError("Something exotic went wrong")).toBe("Something exotic went wrong");
+  /**
+   * The unmapped cases are the dangerous ones: they are written for a developer
+   * and can name an internal table or the exact database fault. Passing them
+   * through put all of that on the sign-in screen.
+   */
+  it("replaces an unrecognised message rather than passing it through", () => {
+    const raw = 'Database error saving new user: relation "profiles" does not exist';
+
+    const message = friendlyAuthError(raw);
+
+    expect(message).not.toContain("relation");
+    expect(message).not.toContain("profiles");
+    expect(message).toMatch(/try again/i);
   });
 });

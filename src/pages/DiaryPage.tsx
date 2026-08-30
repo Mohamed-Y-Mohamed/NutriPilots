@@ -22,6 +22,7 @@ import { loadRecipes, searchIngredients } from "../services/foodSearch";
 import { useAppData } from "../state/AppDataContext";
 import { MEALS, type Ingredient, type MealName, type RecentFood, type Recipe } from "../types";
 
+import { presentError } from "../lib/errors";
 type Tab = "ingredients" | "recipes" | "mine";
 
 const TAB_OPTIONS = [
@@ -69,7 +70,7 @@ export function DiaryPage() {
       void searchIngredients(query)
         .then(setIngredients)
         .catch((reason: unknown) =>
-          setError(reason instanceof Error ? reason.message : "Could not load foods."),
+          setError(presentError(reason, "Could not load foods.")),
         )
         .finally(() => setLoading(false));
     }, 260);
@@ -84,7 +85,7 @@ export function DiaryPage() {
     void loadRecipes()
       .then(setRecipes)
       .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "Could not load recipes."),
+        setError(presentError(reason, "Could not load recipes.")),
       )
       .finally(() => setLoading(false));
   }, [tab, recipes.length]);
@@ -95,7 +96,7 @@ export function DiaryPage() {
     void loadRecentFoods()
       .then(setRecents)
       .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : "Could not load your foods."),
+        setError(presentError(reason, "Could not load your foods.")),
       )
       .finally(() => setLoading(false));
   }, [tab]);
@@ -139,7 +140,7 @@ export function DiaryPage() {
       showToast(`${food.name} added to ${meal}`);
       reloadRecents();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not add that food.");
+      setError(presentError(reason, "Could not add that food."));
     }
   };
 

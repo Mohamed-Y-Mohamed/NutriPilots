@@ -1,7 +1,7 @@
 import { localDateKey } from "../lib/dates";
+import { serverMessage, userError, UserFacingError } from "../lib/errors";
 import { requireSupabase } from "../lib/supabase";
 import type {
-  AiProvider,
   ChatMessage,
   CoachPlan,
   MealEstimate,
@@ -10,31 +10,47 @@ import type {
   UsageState,
 } from "../types";
 
-/** Remembered so Settings can show which function build actually answered. */
-export let lastFunctionBuild: string | null = null;
-
 /**
- * An Edge Function that answered with an error body.
+ * A server call that answered with an error body.
+ *
+ * It extends UserFacingError because the server writes these for the reader: an
+ * error field coming back from our own API is already a sentence someone is
+ * meant to see, unlike the raw database and network failures around it. That
+ * trust is earned rather than assumed — invokeFunction screens the text with
+ * serverMessage() before constructing one, so a function that leaks on some
+ * unhandled path cannot leak all the way to the screen.
  *
  * It carries the parsed payload as well as the message so a caller that needs
  * more than the text — the daily allowance, say — can read it without a second
- * request. Existing callers are unaffected: `reason.message` still works.
+ * request.
  */
-export class FunctionError extends Error {
+export class FunctionError extends UserFacingError {
   constructor(message: string, readonly payload: unknown) {
     super(message);
     this.name = "FunctionError";
   }
 }
 
+/**
+ * What a failing call says when the server did not word it itself — a gateway
+ * that answered before the function ran, or a body that was not JSON. Status
+ * codes mean nothing to a reader, so none of them are shown.
+ */
+function statusMessage(status: number): string {
+  if (status === 401 || status === 403) {
+    return "Your session has expired. Please sign in again.";
+  }
+  if (status === 429) {
+    return "That was a lot at once. Please wait a minute and try again.";
+  }
+  if (status >= 500) {
+    return "NutriPilot is having trouble right now. Please try again in a moment.";
+  }
+  return "That did not go through. Please try again in a moment.";
+}
+
 export interface AiChatResponse {
-  /** Version marker from the deployed Edge Function. */
-  build?: string;
   reply: string;
-  provider: AiProvider;
-  model: string;
-  /** Models tried and exhausted before one answered. */
-  attempts: string[];
   estimate?: MealEstimate | null;
   /** Meals named in the reply, ready to be reviewed and logged. */
   suggestions?: MealSuggestion[];
@@ -57,7 +73,7 @@ export async function invokeFunction<T>(name: string, body: unknown): Promise<T>
 
   const { data: sessionData } = await client.auth.getSession();
   const token = sessionData.session?.access_token;
-  if (!token) throw new Error("Please sign in first.");
+  if (!token) throw userError("Please sign in first.");
 
   let response: Response;
   try {
@@ -70,13 +86,16 @@ export async function invokeFunction<T>(name: string, body: unknown): Promise<T>
       },
       body: JSON.stringify(body),
     });
-  } catch {
-    // A browser reports an undeployed function as "Failed to fetch": Supabase's
-    // router answers the CORS preflight for an unknown function without
-    // allowing `content-type`, so the request is blocked before the 404 is ever
-    // readable. Say something the reader can act on instead.
-    throw new Error(
-      `Could not reach the "${name}" service. It may not be deployed yet, or you may be offline.`,
+  } catch (reason) {
+    // Anything from a dropped connection to a service that is not answering
+    // arrives here identically, as "Failed to fetch". Which of those it is
+    // makes no difference to the reader and the name of the service they could
+    // not reach is ours to know, not theirs — so it is logged, not shown.
+    if (import.meta.env.DEV) console.error(`[nutripilot] ${name} unreachable:`, reason);
+    throw userError(
+      navigator.onLine === false
+        ? "You appear to be offline. Check your connection and try again."
+        : "NutriPilot could not reach the server. Please try again in a moment.",
     );
   }
 
@@ -88,11 +107,17 @@ export async function invokeFunction<T>(name: string, body: unknown): Promise<T>
   }
 
   if (!response.ok) {
-    const message =
+    // This is the one place server text becomes something the app will show, so
+    // it is the one place it gets checked. Past here a FunctionError is trusted
+    // verbatim, and it should only have to be trusted once.
+    const written =
       payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error: unknown }).error)
-        : `Request failed (${response.status}).`;
-    throw new FunctionError(message, payload);
+        : "";
+    throw new FunctionError(
+      serverMessage(written, statusMessage(response.status)),
+      payload,
+    );
   }
 
   return payload as T;
@@ -127,20 +152,11 @@ export async function sendChatMessage(
   // to ask about the same one. A server deriving "today" from its own UTC clock
   // tells anyone west of UTC they have eaten nothing, every evening, from the
   // moment UTC rolls over until their own midnight.
-  const response = await invokeFunction<AiChatResponse>("ai-chat", {
+  return invokeFunction<AiChatResponse>("ai-chat", {
     message,
     imagePath,
     today: localDateKey(),
   });
-  if (response.build) {
-    lastFunctionBuild = response.build;
-    try {
-      localStorage.setItem("nutripilot.functionBuild", response.build);
-    } catch {
-      // Reporting the build is a convenience, never a requirement.
-    }
-  }
-  return response;
 }
 
 /** Uploads to the private bucket under the user's own folder. */
@@ -152,16 +168,23 @@ export async function uploadMealPhoto(userId: string, blob: Blob): Promise<strin
     .from("meal-photos")
     .upload(path, blob, { contentType: "image/jpeg", upsert: false });
 
-  if (error) throw new Error(`Could not upload the photo: ${error.message}`);
+  if (error) {
+    if (import.meta.env.DEV) console.error("[nutripilot] photo upload failed:", error);
+    throw userError("That photo could not be uploaded. Please try again in a moment.");
+  }
   return path;
 }
 
 /** PostgREST's code for "you asked for a column this table does not have". */
 const UNDEFINED_COLUMN = "42703";
 
-const CHAT_FIELDS = "id,role,content,estimate,provider,model,created_at,logged_at";
+// Which provider and model answered is recorded on the row for support and
+// cost work, and is deliberately not read back here: the app has never shown
+// it, and a column the client does not ask for is a detail about our
+// infrastructure that cannot end up in a browser.
+const CHAT_FIELDS = "id,role,content,estimate,created_at,logged_at";
 /** The same list for a database that predates the logged_at migration. */
-const CHAT_FIELDS_WITHOUT_LOGGED = "id,role,content,estimate,provider,model,created_at";
+const CHAT_FIELDS_WITHOUT_LOGGED = "id,role,content,estimate,created_at";
 
 export async function loadChatHistory(limit = 60): Promise<ChatMessage[]> {
   const client = requireSupabase();
@@ -169,7 +192,19 @@ export async function loadChatHistory(limit = 60): Promise<ChatMessage[]> {
     client
       .from("chat_messages")
       .select(fields)
+      // Newest first, then reversed below, so the limit keeps the most recent
+      // messages rather than the oldest.
       .order("created_at", { ascending: false })
+      // A question and its answer used to be written by a single INSERT, and
+      // Postgres stamps every row in one statement with the same transaction
+      // clock. Those rows are still in people's history with timestamps that
+      // tie, and a tie with no second key sorts arbitrarily — which is how a
+      // reply ended up above the message that prompted it after a reload.
+      //
+      // Within one exchange the user always speaks first, so role settles it:
+      // ascending here puts "assistant" above "user", which becomes user above
+      // assistant once the page is reversed.
+      .order("role", { ascending: true })
       .limit(limit);
 
   let { data, error } = await read(CHAT_FIELDS);
@@ -177,10 +212,13 @@ export async function loadChatHistory(limit = 60): Promise<ChatMessage[]> {
   // Losing the record of what was already logged is a card that offers twice;
   // failing outright is a coach with no conversation in it at all.
   if (error?.code === UNDEFINED_COLUMN) {
-    console.warn(
-      "[coach] chat_messages.logged_at is missing — run the chat_message_logged_at " +
-        "migration, or an estimate already added to the diary will be offered again.",
-    );
+    // Names a table and a migration, so it stays out of a shipped console.
+    if (import.meta.env.DEV) {
+      console.warn(
+        "[coach] chat_messages.logged_at is missing — run the chat_message_logged_at " +
+          "migration, or an estimate already added to the diary will be offered again.",
+      );
+    }
     ({ data, error } = await read(CHAT_FIELDS_WITHOUT_LOGGED));
   }
 
@@ -193,7 +231,6 @@ export async function loadChatHistory(limit = 60): Promise<ChatMessage[]> {
       role: row.role === "assistant" ? ("assistant" as const) : ("user" as const),
       text: (row.content as string) ?? "",
       estimate: (row.estimate as MealEstimate | null) ?? null,
-      provider: (row.provider as AiProvider | null) ?? null,
       createdAt: row.created_at as string,
       // Without this the card comes back after a reload offering a meal that
       // is already in the diary, and accepting it logs the meal twice.
@@ -214,7 +251,9 @@ export async function markEstimateLogged(messageId: string): Promise<void> {
     .update({ logged_at: new Date().toISOString() })
     .eq("id", messageId);
 
-  if (error) console.warn("[coach] could not mark the estimate as logged:", error.message);
+  if (error && import.meta.env.DEV) {
+    console.warn("[coach] could not mark the estimate as logged:", error.message);
+  }
 }
 
 export async function clearChatHistory(userId: string): Promise<void> {

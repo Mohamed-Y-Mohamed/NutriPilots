@@ -15,6 +15,7 @@ import { scaleIngredientNutrition } from "../lib/nutrition";
 import { useAppData } from "../state/AppDataContext";
 import { MEALS, type Ingredient, type MealName } from "../types";
 
+import { presentError } from "../lib/errors";
 const QUICK_AMOUNTS = [30, 50, 100, 150, 200, 250];
 
 /**
@@ -68,7 +69,7 @@ export function PortionEditor({
       onAdded?.();
       window.setTimeout(() => setAdded(false), 1800);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not add that to your diary.");
+      setError(presentError(reason, "Could not add that to your diary."));
     } finally {
       setBusy(false);
     }

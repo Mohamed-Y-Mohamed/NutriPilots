@@ -102,14 +102,24 @@ describe("PortionEditor", () => {
     );
   });
 
+  /**
+   * The failure has to be visible, but not in the words the database chose. A
+   * raw message names tables, columns and policies; the reader gets the action
+   * that failed and a way forward instead.
+   */
   it("surfaces a failure instead of pretending the food was logged", async () => {
-    logFood.mockRejectedValue(new Error("Network unreachable"));
+    logFood.mockRejectedValue(
+      new Error('insert into "diary_entries" violates row-level security policy'),
+    );
     const user = userEvent.setup();
     render(<PortionEditor ingredient={chicken} defaultMeal="Lunch" onBack={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: /add to diary/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Network unreachable");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/could not add that to your diary/i);
+    expect(alert).toHaveTextContent(/try again/i);
+    expect(alert.textContent).not.toMatch(/diary_entries|row-level security/);
     expect(screen.queryByText("Added to diary")).not.toBeInTheDocument();
   });
 

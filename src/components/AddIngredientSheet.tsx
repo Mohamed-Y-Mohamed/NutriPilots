@@ -19,6 +19,7 @@ import {
   type IngredientDraft,
 } from "../types";
 
+import { presentError } from "../lib/errors";
 const EMPTY = {
   name: "",
   brand: "",
@@ -123,7 +124,7 @@ export function AddIngredientSheet({
       const prepared = await prepareImage(file);
       await runScan(prepared.blob);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not read that image.");
+      setError(presentError(reason, "Could not read that image."));
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -165,7 +166,7 @@ export function AddIngredientSheet({
       setReview(result.review);
       setNeedsConfirm(result.review.verdict === "needs_review");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not read that photo.");
+      setError(presentError(reason, "Could not read that photo."));
     } finally {
       setScanning(false);
     }
@@ -190,7 +191,7 @@ export function AddIngredientSheet({
       }
       setNeedsConfirm(Boolean(result.requiresConfirmation));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save that food.");
+      setError(presentError(reason, "Could not save that food."));
     } finally {
       setBusy(false);
     }
