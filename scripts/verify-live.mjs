@@ -255,10 +255,10 @@ try {
       body: { p_call_type: "vision" },
     });
     assert(chat?.daily_limit === 20, `chat limit was ${chat?.daily_limit}, expected 20`);
-    assert(vision?.daily_limit === 5, `vision limit was ${vision?.daily_limit}, expected 5`);
+    assert(vision?.daily_limit === 8, `vision limit was ${vision?.daily_limit}, expected 8`);
     assert(new Date(Date.parse(chat.resets_at)).getUTCHours() === 0,
       `the reset instant is not midnight UTC: ${chat.resets_at}`);
-    console.log(`      chat ${chat.used}/20, photos ${vision.used}/5`);
+    console.log(`      chat ${chat.used}/20, photos ${vision.used}/8`);
   });
 
   await check("the coach's calls were actually counted", async () => {
@@ -273,7 +273,7 @@ try {
     });
     assert(chat.used >= 2, `chat counted ${chat.used}, expected at least 2`);
     assert(vision.used >= 1, `photos counted ${vision.used}, expected at least 1`);
-    console.log(`      chat ${chat.used}/20, photos ${vision.used}/5`);
+    console.log(`      chat ${chat.used}/20, photos ${vision.used}/8`);
   });
 
   await check("nobody can refund themselves with a signed-in session", async () => {
@@ -336,7 +336,7 @@ try {
       chat.per_minute_limit > 1,
       `chat is capped at ${chat.per_minute_limit}/minute — the burst-limit migration has not been applied`,
     );
-    assert(chat.daily_limit === 35, `the daily cap moved to ${chat.daily_limit}, expected 35`);
+    assert(chat.daily_limit === 20, `the daily cap moved to ${chat.daily_limit}, expected 20`);
     console.log(
       `      chat ${chat.daily_limit}/day at ${chat.per_minute_limit}/minute`,
     );
