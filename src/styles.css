@@ -17,6 +17,21 @@
   --color-ink-muted: #6b7265;
   --color-ink-faint: #9ba192;
 
+  /* Motion.
+     The browser's built-in easings are too weak to read as deliberate — they
+     spend most of their time near-linear, so movement looks like a repaint
+     rather than a decision. These override Tailwind's defaults, so every
+     `ease-out` and `ease-in-out` in the app picks them up without a second
+     parallel system to remember.
+
+     --ease-out    entering and exiting. Never ease-in on UI: it starts slow at
+                   exactly the moment the user is looking.
+     --ease-in-out something already on screen moving or morphing.
+     --ease-drawer the iOS sheet curve, for anything dragged up from an edge. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
   /* Brand greens taken from the logo. */
   --color-brand: #17966f;
   --color-brand-strong: #0f7a59;
@@ -175,17 +190,66 @@
   }
 
   .animate-fade-in {
-    animation: np-fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: np-fade-in 200ms var(--ease-out) both;
   }
   .animate-rise {
-    animation: np-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: np-rise 280ms var(--ease-out) both;
   }
   .animate-sheet {
-    animation: np-sheet 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: np-sheet 320ms var(--ease-drawer) both;
+  }
+  /* A message arriving. Comes in from the side it belongs to, so the motion
+     says who is speaking before the colour does. */
+  .animate-msg-in {
+    animation: np-msg-in 260ms var(--ease-out) both;
+  }
+
+  /* Route changes. Shorter and shallower than a card entrance on purpose:
+     this fires every time somebody taps the tab bar, which is dozens of times
+     a day, and anything slower turns navigation into waiting. */
+  .animate-route {
+    animation: np-route 220ms var(--ease-out) both;
   }
   .animate-splash-slide {
     animation: np-splash-slide 1.1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   }
+
+  /* A list arriving in order rather than all at once. The delay is set per
+     item with --np-i, and capped in the keyframe consumer so a long diary
+     does not take two seconds to finish appearing. */
+  .animate-stagger {
+    animation: np-rise 280ms var(--ease-out) both;
+    animation-delay: calc(var(--np-i, 0) * 55ms);
+  }
+
+  /* Touch feedback. Deliberately quick and small — on a phone this is the
+     difference between a button feeling connected and feeling broken, and
+     anything slower than ~120ms reads as lag rather than as response. */
+  .press {
+    transition:
+      transform 120ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 120ms ease;
+  }
+  .press:active {
+    transform: scale(0.97);
+  }
+
+}
+
+/*
+  A conic-gradient stop is not an interpolatable value, so the calorie ring
+  used to jump straight to its new angle whenever a food was logged. Registering
+  the angle as a typed custom property makes it animatable, which turns the one
+  moment the user actually watches — the ring moving after they log something —
+  into feedback rather than a repaint.
+
+  Registered properties are ignored by browsers that do not support them, so the
+  ring simply snaps as before rather than breaking.
+*/
+@property --np-ring {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
 @keyframes np-splash-slide {
@@ -206,10 +270,14 @@
   }
 }
 
+/* 6px was not enough travel to register as movement — it read as the page
+   flickering rather than arriving. 12px plus a hair of scale gives it somewhere
+   to come from without anything sliding across the screen. Transform and
+   opacity only, so it never touches layout. */
 @keyframes np-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(12px) scale(0.985);
   }
   to {
     opacity: 1;
@@ -217,10 +285,12 @@
   }
 }
 
+/* Sheets travel by their own height, so the same rule works for a short
+   confirm and a full-height terms sheet without a hardcoded pixel value. */
 @keyframes np-sheet {
   from {
-    opacity: 0.4;
-    transform: translateY(28px);
+    opacity: 0;
+    transform: translateY(100%);
   }
   to {
     opacity: 1;
@@ -228,13 +298,63 @@
   }
 }
 
+@keyframes np-route {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes np-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+  Reduced motion means less movement, not no feedback.
+
+  Flattening everything to 0.01ms also kills the fades and colour changes that
+  tell someone a thing has appeared or a button has responded — which makes the
+  interface harder to follow for the very people asking for less motion. So the
+  rule here removes travel and scaling, and keeps opacity.
+*/
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* Movement out, fade kept. */
+  .animate-rise,
+  .animate-stagger,
+  .animate-sheet,
+  .animate-route,
+  .animate-msg-in {
+    animation: np-fade-in 160ms var(--ease-out) both !important;
+    animation-delay: 0ms !important;
+  }
+
+  /* The looping splash shimmer is decoration with no meaning attached. */
+  .animate-splash-slide {
+    animation: none !important;
+  }
+
+  /* Press feedback is confirmation the tap landed, so it stays — but without
+     the scale, which is the part that constitutes motion. */
+  .press:active,
+  button:active {
+    transform: none !important;
   }
 }

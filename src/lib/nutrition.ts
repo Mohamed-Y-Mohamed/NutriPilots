@@ -1,3 +1,4 @@
+import { buildTargetPlan } from "./energy";
 import type {
   DailyTargets,
   DiaryEntry,
@@ -7,47 +8,24 @@ import type {
   UserProfile,
 } from "../types";
 
-const ACTIVITY_MULTIPLIERS = {
-  sedentary: 1.2,
-  light: 1.375,
-  moderate: 1.55,
-  very: 1.725,
-  athlete: 1.9,
-} as const;
-
-const GOAL_ADJUSTMENTS = {
-  "lose-fast": -500,
-  lose: -300,
-  maintain: 0,
-  "lean-gain": 200,
-  gain: 350,
-} as const;
-
-const MACRO_SPLITS = {
-  "lose-fast": { protein: 0.3, carbs: 0.4, fat: 0.3 },
-  lose: { protein: 0.3, carbs: 0.4, fat: 0.3 },
-  maintain: { protein: 0.25, carbs: 0.45, fat: 0.3 },
-  "lean-gain": { protein: 0.25, carbs: 0.5, fat: 0.25 },
-  gain: { protein: 0.25, carbs: 0.5, fat: 0.25 },
-} as const;
-
-/** Mifflin–St Jeor, then activity, then goal adjustment, with a safety floor. */
-export function calculateDailyTargets(profile: UserProfile): DailyTargets {
-  const sexConstant = profile.calculationSex === "male" ? 5 : -161;
-  const bmr = 10 * profile.weightKg + 6.25 * profile.heightCm - 5 * profile.age + sexConstant;
-  const maintenance = bmr * ACTIVITY_MULTIPLIERS[profile.activityLevel];
-  const rawCalories = maintenance + GOAL_ADJUSTMENTS[profile.goalMode];
-  const minimum = profile.calculationSex === "male" ? 1500 : 1200;
-  const calories = Math.round(Math.max(minimum, rawCalories));
-  const split = MACRO_SPLITS[profile.goalMode];
-
-  return {
-    calories,
-    protein: Math.round((calories * split.protein) / 4),
-    carbs: Math.round((calories * split.carbs) / 4),
-    fat: Math.round((calories * split.fat) / 9),
-    fibre: Math.max(25, Math.round((calories / 1000) * 14)),
-  };
+/**
+ * The daily plan for a profile.
+ *
+ * All of the reasoning lives in lib/energy.ts — resting energy, activity,
+ * the goal's percentage adjustment, protein against a reference weight, fat
+ * against its floors, carbohydrate taking the remainder. This is the thin
+ * entry point everything in the app already calls, kept so that changing how
+ * a target is worked out does not mean touching every screen that shows one.
+ *
+ * `observedMaintenance` is the figure calibrated from the user's own weight
+ * trend and logged intake. Pass it whenever it exists: a measurement of this
+ * person beats a prediction about people shaped like them.
+ */
+export function calculateDailyTargets(
+  profile: UserProfile,
+  observedMaintenance?: number | null,
+): DailyTargets {
+  return buildTargetPlan(profile, observedMaintenance).targets;
 }
 
 export interface ScaledNutrition {
@@ -167,8 +145,11 @@ export function round1(value: number): number {
  * an accepted plan reaches the ring, the macro bars and the coach's own
  * context without any of them knowing where the number came from.
  */
-export function effectiveTargets(profile: UserProfile): DailyTargets {
-  return profile.targetOverride ?? calculateDailyTargets(profile);
+export function effectiveTargets(
+  profile: UserProfile,
+  observedMaintenance?: number | null,
+): DailyTargets {
+  return profile.targetOverride ?? calculateDailyTargets(profile, observedMaintenance);
 }
 
 /**

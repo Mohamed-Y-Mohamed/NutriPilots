@@ -20,8 +20,16 @@ const { loadProfile, saveProfile, resetHealthData, DEFAULT_PROFILE } = await imp
   "./profileRepository"
 );
 
-/** What PostgREST returns for a column the table does not have. */
+/**
+ * What PostgREST returns for a column the table does not have.
+ *
+ * There are three tiers of column now, added by three migrations: the original
+ * body stats, the target overrides, and the body-composition inputs (steps,
+ * training, medication). A database can be stopped at any of them, so the
+ * repository steps back one tier at a time rather than giving up.
+ */
 const missingColumn = { code: "42703", message: 'column user_profiles.target_calories does not exist' };
+const missingBodyComp = { code: "42703", message: 'column user_profiles.steps_per_day does not exist' };
 
 const ROW = {
   display_name: "Sam",
@@ -43,7 +51,10 @@ beforeEach(() => {
 
 describe("loadProfile against a database missing the target columns", () => {
   it("falls back to the columns that do exist instead of failing", async () => {
+    // Missing both the body-composition columns and the target columns, so it
+    // steps back twice before finding a shape the table actually has.
     maybeSingle
+      .mockResolvedValueOnce({ data: null, error: missingBodyComp })
       .mockResolvedValueOnce({ data: null, error: missingColumn })
       .mockResolvedValueOnce({ data: ROW, error: null });
 
@@ -54,7 +65,29 @@ describe("loadProfile against a database missing the target columns", () => {
     // The feature is simply unavailable, which reads as "no override".
     expect(profile?.targetOverride).toBeNull();
     expect(profile?.targetsSource).toBeNull();
-    expect(select).toHaveBeenNthCalledWith(2, expect.not.stringContaining("target_calories"));
+    expect(select).toHaveBeenNthCalledWith(3, expect.not.stringContaining("target_calories"));
+  });
+
+  it("keeps the targets when only the body-composition columns are missing", async () => {
+    // The commoner case in practice: one migration behind, not two. Losing the
+    // custom targets as well would be a needless second casualty.
+    maybeSingle
+      .mockResolvedValueOnce({ data: null, error: missingBodyComp })
+      .mockResolvedValueOnce({
+        data: { ...ROW, target_calories: 2100, target_protein_g: 170, target_carbs_g: 190, target_fat_g: 65, target_fibre_g: 30, targets_source: "manual" },
+        error: null,
+      });
+
+    const profile = await loadProfile();
+
+    expect(profile?.targetOverride).toEqual({
+      calories: 2100, protein: 170, carbs: 190, fat: 65, fibre: 30,
+    });
+    // Absent columns read as "not answered", never as zero — the calculator
+    // treats a missing step count and a genuine zero differently.
+    expect(profile?.stepsPerDay).toBeNull();
+    expect(profile?.onMedication).toBe(false);
+    expect(select).toHaveBeenCalledTimes(2);
   });
 
   it("still reports a genuine failure rather than swallowing it", async () => {
@@ -102,18 +135,42 @@ describe("loadProfile against a database missing the target columns", () => {
 describe("saveProfile against a database missing the target columns", () => {
   it("still saves the body stats", async () => {
     upsert
+      .mockResolvedValueOnce({ error: missingBodyComp })
       .mockResolvedValueOnce({ error: missingColumn })
       .mockResolvedValueOnce({ error: null });
 
     await saveProfile("user-1", { ...DEFAULT_PROFILE, weightKg: 84, onboarded: true });
 
+    expect(upsert).toHaveBeenCalledTimes(3);
+    expect(upsert.mock.calls[2][0]).not.toHaveProperty("target_calories");
+    expect(upsert.mock.calls[2][0]).toMatchObject({ weight_kg: 84 });
+  });
+
+  it("drops only the body-composition columns when only those are missing", async () => {
+    upsert
+      .mockResolvedValueOnce({ error: missingBodyComp })
+      .mockResolvedValueOnce({ error: null });
+
+    await saveProfile("user-1", {
+      ...DEFAULT_PROFILE,
+      weightKg: 84,
+      stepsPerDay: 9000,
+      onboarded: true,
+      targetOverride: { calories: 2100, protein: 170, carbs: 190, fat: 65, fibre: 30 },
+      targetsSource: "manual",
+      targetsSetAt: null,
+    });
+
+    // Steps could not be stored, but the target the user set was not collateral.
     expect(upsert).toHaveBeenCalledTimes(2);
-    expect(upsert.mock.calls[1][0]).not.toHaveProperty("target_calories");
-    expect(upsert.mock.calls[1][0]).toMatchObject({ weight_kg: 84 });
+    expect(upsert.mock.calls[1][0]).not.toHaveProperty("steps_per_day");
+    expect(upsert.mock.calls[1][0]).toMatchObject({ target_calories: 2100, weight_kg: 84 });
   });
 
   it("refuses an override rather than reporting a save that did nothing", async () => {
-    upsert.mockResolvedValueOnce({ error: missingColumn });
+    upsert
+      .mockResolvedValueOnce({ error: missingBodyComp })
+      .mockResolvedValueOnce({ error: missingColumn });
 
     await expect(
       saveProfile("user-1", {
@@ -128,8 +185,9 @@ describe("saveProfile against a database missing the target columns", () => {
       // to read about on a settings screen.
     ).rejects.toThrow(/custom daily targets are not available/i);
 
-    // Nothing was written on the second attempt, because there was none.
-    expect(upsert).toHaveBeenCalledTimes(1);
+    // Nothing was written after the two rejections, because there was nothing
+    // left that could carry the override.
+    expect(upsert).toHaveBeenCalledTimes(2);
   });
 });
 

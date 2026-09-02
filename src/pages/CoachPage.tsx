@@ -1,4 +1,4 @@
-import { Bot, Camera, Check, Images, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { Bot, Camera, Check, CircleHelp, Images, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   Alert,
@@ -9,7 +9,9 @@ import {
   Skeleton,
   useTypewriter,
 } from "../components/ui";
+import { CoachHelpSheet } from "../components/CoachHelpSheet";
 import { IngredientLines } from "../components/IngredientLines";
+import { LegalSheet } from "../components/LegalSheet";
 import { PlanCard } from "../components/PlanCard";
 import { ScrollingText } from "../components/ScrollingText";
 import { formatTimeUntil } from "../lib/dates";
@@ -102,6 +104,22 @@ function useSecondsUntil(until: number | null): number {
   return left;
 }
 
+/**
+ * The longest message the coach will read. Mirrors MAX_MESSAGE_CHARS in the
+ * ai-chat function, which truncates at the same figure — the server is the
+ * guarantee, this is only so the limit is visible while typing.
+ */
+const MAX_MESSAGE_CHARS = 1000;
+
+/**
+ * How much room has to be left before the counter appears at all.
+ *
+ * A composer that permanently displays "1000" is counting at someone who is
+ * nowhere near the limit. Almost every coach message is a sentence or two, so
+ * the number stays out of the way until the last fifth, where it is news.
+ */
+const COUNTER_APPEARS_AT = 200;
+
 const SUGGESTIONS = [
   "I have been the same weight for 3 weeks — what should I change?",
   "How much protein should I eat to build muscle?",
@@ -126,6 +144,8 @@ export function CoachPage() {
   // Only a reply that arrived in this session is typed out. Replaying the
   // whole history letter by letter on every visit would be infuriating.
   const [animatingId, setAnimatingId] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLInputElement>(null);
@@ -318,6 +338,7 @@ export function CoachPage() {
   };
 
   const hasText = Boolean(prompt.trim());
+  const charsLeft = MAX_MESSAGE_CHARS - prompt.length;
 
   const clear = async () => {
     if (!user) return;
@@ -338,12 +359,23 @@ export function CoachPage() {
             Food, weight loss, muscle gain — or photograph a meal to log it.
           </p>
         </div>
-        {messages.length > 0 && (
-          <Button size="sm" variant="ghost" onClick={() => void clear()}>
-            <Trash2 size={15} />
-            <span className="sr-only sm:not-sr-only">Clear</span>
+        <div className="flex shrink-0 items-center gap-1">
+          {messages.length > 0 && (
+            <Button size="sm" variant="ghost" onClick={() => void clear()}>
+              <Trash2 size={15} />
+              <span className="sr-only sm:not-sr-only">Clear</span>
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="How the coach works"
+            onClick={() => setShowHelp(true)}
+          >
+            <CircleHelp size={16} />
+            <span className="sr-only sm:not-sr-only">How it works</span>
           </Button>
-        )}
+        </div>
       </div>
 
       <UsageBanner usage={usage} />
@@ -462,6 +494,11 @@ export function CoachPage() {
             ref={promptRef}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
+            // The server truncates at the same figure. Capping here means a
+            // long paste is visibly refused the characters it cannot keep,
+            // rather than sent in full and silently cut on the way through.
+            maxLength={MAX_MESSAGE_CHARS}
+            aria-describedby="composer-limit"
             placeholder={
               outOfCalls
                 ? "Back tomorrow…"
@@ -474,6 +511,25 @@ export function CoachPage() {
             enterKeyHint="send"
             className="min-w-0 flex-1 bg-transparent px-1 text-[15px] outline-none"
           />
+
+          {/* Stated once, statically, for anyone who cannot see the countdown.
+              The number itself is aria-hidden: announcing it on every keystroke
+              would talk over the words being typed. */}
+          <span id="composer-limit" className="sr-only">
+            Up to {MAX_MESSAGE_CHARS} characters.
+          </span>
+
+          {charsLeft <= COUNTER_APPEARS_AT && (
+            <span
+              aria-hidden="true"
+              className={cx(
+                "shrink-0 text-[11px] tabular-nums",
+                charsLeft === 0 ? "text-danger" : "text-ink-faint",
+              )}
+            >
+              {charsLeft}
+            </span>
+          )}
 
           <button
             type="submit"
@@ -509,6 +565,19 @@ export function CoachPage() {
           </button>
         </div>
       </form>
+
+      {showHelp && (
+        <CoachHelpSheet
+          onClose={() => setShowHelp(false)}
+          onOpenTerms={() => {
+            // One sheet at a time: stacking a second over the first leaves two
+            // dialogs fighting over focus and the Escape key.
+            setShowHelp(false);
+            setShowTerms(true);
+          }}
+        />
+      )}
+      {showTerms && <LegalSheet onClose={() => setShowTerms(false)} />}
     </div>
   );
 }
@@ -624,7 +693,7 @@ function MessageBubble({
 
   if (message.role === "user") {
     return (
-      <div className="my-4 flex justify-end">
+      <div className="animate-msg-in my-4 flex justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-olive px-3.5 py-2.5">
           {message.imagePreviewUrl && (
             <img
@@ -644,7 +713,7 @@ function MessageBubble({
   const stillTyping = typed.length < message.text.length;
 
   return (
-    <div className="my-4 flex gap-2.5">
+    <div className="animate-msg-in my-4 flex gap-2.5">
       <Avatar />
       <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2.5">
         <p className="whitespace-pre-wrap text-[14px] leading-relaxed">

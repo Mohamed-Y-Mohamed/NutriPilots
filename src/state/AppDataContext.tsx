@@ -16,11 +16,23 @@ import {
 } from "../lib/nutrition";
 import { localDateKey } from "../lib/dates";
 import {
+  calibrateMaintenance,
+  summariseWeightTrend,
+  type Calibration,
+  type WeightTrend,
+} from "../lib/weightTrend";
+import {
   addDiaryEntry as addEntry,
   clearDiary as clearDiaryRows,
   loadDiary,
   removeDiaryEntry as removeEntry,
 } from "../services/diaryRepository";
+import { loadDailyTotals } from "../services/analyticsRepository";
+import {
+  deleteAllWeightLogs,
+  loadWeightLogs,
+  saveWeightLog,
+} from "../services/weightRepository";
 import {
   DEFAULT_PROFILE,
   loadProfile,
@@ -33,6 +45,7 @@ import type {
   DiaryEntry,
   TargetsSource,
   UserProfile,
+  WeightLog,
 } from "../types";
 import { useAuth } from "./AuthContext";
 import { useTheme } from "./ThemeContext";
@@ -46,6 +59,18 @@ interface AppDataValue {
   targets: DailyTargets;
   /** What the formula alone says, for comparing an override against. */
   calculatedTargets: DailyTargets;
+  /** Recent weigh-ins, oldest first. Empty until the user starts logging. */
+  weightLogs: WeightLog[];
+  /** Week against week, both ends averaged. */
+  weightTrend: WeightTrend;
+  /**
+   * Maintenance worked back from real results, or null when there is not yet
+   * enough logging to support one. When it exists the targets above are built
+   * from it rather than from the equation.
+   */
+  calibration: Calibration | null;
+  /** Records this morning's weight, replacing any already logged for that day. */
+  logWeight: (log: WeightLog) => Promise<void>;
   date: string;
   setDate: (date: string) => void;
   diary: DiaryEntry[];
@@ -62,6 +87,19 @@ interface AppDataValue {
   refresh: () => Promise<void>;
 }
 
+/**
+ * How far back the calibration inputs reach. Four weeks is the longest window
+ * the trend maths uses, and loading more would be paid for on every app open
+ * without changing an answer.
+ */
+const CALIBRATION_DAYS = 28;
+
+function shiftDays(dateKey: string, back: number): string {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - back);
+  return date.toISOString().slice(0, 10);
+}
+
 const AppDataContext = createContext<AppDataValue | null>(null);
 
 export function AppDataProvider({ children }: PropsWithChildren) {
@@ -72,6 +110,8 @@ export function AppDataProvider({ children }: PropsWithChildren) {
   const [hasProfile, setHasProfile] = useState(false);
   const [date, setDate] = useState(() => localDateKey());
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
+  const [dayTotals, setDayTotals] = useState<Array<{ date: string; calories: number }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,19 +120,51 @@ export function AppDataProvider({ children }: PropsWithChildren) {
   // device. This guard stops the two from writing over each other in a loop.
   const themeHydrated = useRef(false);
 
+  /** Counts loads so a stale one can tell it has been superseded. */
+  const loadSequence = useRef(0);
+
   const loadEverything = useCallback(async () => {
     if (!user) {
       setProfileState(DEFAULT_PROFILE);
       setDiary([]);
+      setWeightLogs([]);
+      setDayTotals([]);
       return;
     }
+
+    /**
+     * Which load this is. The Today screen steps between days with arrows, so
+     * two taps in quick succession put two of these in flight at once — and
+     * whichever server happens to answer last wins, not whichever day the user
+     * is actually looking at. Every write below is gated on still being the
+     * newest request, so a slow answer for yesterday cannot overwrite today.
+     */
+    const seq = loadSequence.current + 1;
+    loadSequence.current = seq;
+    const current = () => seq === loadSequence.current;
 
     setIsLoading(true);
     setError(null);
     try {
+      const from = shiftDays(date, CALIBRATION_DAYS);
+
       const [loadedProfile, entries] = await withClockSkewRetry(() =>
         Promise.all([loadProfile(), loadDiary(date)]),
       );
+      if (!current()) return;
+
+      // Calibration inputs are loaded separately and are allowed to fail. They
+      // improve a target; they are not needed to show one. A database a
+      // migration behind, or an analytics view that is not there yet, must cost
+      // the trend chart rather than the whole screen.
+      const [weights, totals] = await Promise.all([
+        loadWeightLogs(from).catch(() => [] as WeightLog[]),
+        loadDailyTotals(from, date).catch(() => []),
+      ]);
+      if (!current()) return;
+
+      setWeightLogs(weights);
+      setDayTotals(totals.map((day) => ({ date: day.date, calories: day.calories })));
 
       if (loadedProfile?.onboarded) {
         setProfileState(loadedProfile);
@@ -114,9 +186,12 @@ export function AppDataProvider({ children }: PropsWithChildren) {
 
       setDiary(entries);
     } catch (reason) {
-      setError(presentError(reason, "Could not load your data."));
+      // A failure for a day the user has already navigated away from is not
+      // their problem, and putting it on screen would blame the day they are
+      // now looking at for something that happened to a different request.
+      if (current()) setError(presentError(reason, "Could not load your data."));
     } finally {
-      setIsLoading(false);
+      if (current()) setIsLoading(false);
     }
   }, [user, date, preference, setPreference]);
 
@@ -187,18 +262,59 @@ export function AppDataProvider({ children }: PropsWithChildren) {
   const clearHealthData = useCallback(async () => {
     if (!user) throw userError("Please sign in first.");
     await clearDiaryRows();
+    // The weigh-in log is body data like the rest of it, and "delete my health
+    // data" that quietly left a year of morning weights behind would be a lie.
     await resetHealthData(user.id, preference);
+    await deleteAllWeightLogs(user.id);
     setDiary([]);
+    setWeightLogs([]);
+    setDayTotals([]);
     setProfileState({ ...DEFAULT_PROFILE, theme: preference });
     setHasProfile(false);
   }, [user, preference]);
+
+  const logWeight = useCallback(
+    async (log: WeightLog) => {
+      if (!user) throw userError("Please sign in to record your weight.");
+      await saveWeightLog(user.id, log);
+
+      // Replace the same day rather than appending: a second weigh-in on one
+      // morning is a correction, and two rows would skew that week's average.
+      setWeightLogs((current) => {
+        const without = current.filter((entry) => entry.date !== log.date);
+        return [...without, log].sort((a, b) => a.date.localeCompare(b.date));
+      });
+    },
+    [user],
+  );
+
+  /**
+   * Maintenance measured rather than predicted, when the data supports it.
+   *
+   * Recomputed from the loaded weigh-ins and daily totals, and handed to the
+   * target calculation so an equation stops being consulted the moment the
+   * user's own results can answer the same question better.
+   */
+  const calibration = useMemo(
+    () => calibrateMaintenance(weightLogs, dayTotals, date),
+    [weightLogs, dayTotals, date],
+  );
+
+  const weightTrend = useMemo(
+    () => summariseWeightTrend(weightLogs, date),
+    [weightLogs, date],
+  );
 
   const value = useMemo<AppDataValue>(
     () => ({
       profile,
       hasProfile,
-      targets: effectiveTargets(profile),
-      calculatedTargets: calculateDailyTargets(profile),
+      targets: effectiveTargets(profile, calibration?.maintenance),
+      calculatedTargets: calculateDailyTargets(profile, calibration?.maintenance),
+      weightLogs,
+      weightTrend,
+      calibration,
+      logWeight,
       date,
       setDate,
       diary,
@@ -216,6 +332,10 @@ export function AppDataProvider({ children }: PropsWithChildren) {
     [
       profile,
       hasProfile,
+      calibration,
+      weightLogs,
+      weightTrend,
+      logWeight,
       date,
       diary,
       isLoading,

@@ -1,4 +1,4 @@
-import { Check, Ruler, Target } from "lucide-react";
+import { Check, Footprints, Pill, Ruler, Target } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Alert,
@@ -10,9 +10,9 @@ import {
   Page,
   PageHeader,
 } from "../components/ui";
-import { calculateDailyTargets } from "../lib/nutrition";
+import { buildTargetPlan, GOAL_STRATEGIES } from "../lib/energy";
 import { useAppData } from "../state/AppDataContext";
-import type { ActivityLevel, GoalMode, UserProfile } from "../types";
+import type { ActivityLevel, GoalMode, TrainingExperience, UserProfile } from "../types";
 
 import { presentError } from "../lib/errors";
 const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string; detail: string }> = [
@@ -23,12 +23,33 @@ const ACTIVITY_OPTIONS: Array<{ value: ActivityLevel; label: string; detail: str
   { value: "athlete", label: "Athlete", detail: "Daily hard training" },
 ];
 
-const GOAL_OPTIONS: Array<{ value: GoalMode; label: string; detail: string }> = [
-  { value: "lose-fast", label: "Lose faster", detail: "About 0.5 kg a week" },
-  { value: "lose", label: "Lose steadily", detail: "About 0.3 kg a week" },
-  { value: "maintain", label: "Maintain", detail: "Stay where you are" },
-  { value: "lean-gain", label: "Lean gain", detail: "Build slowly" },
-  { value: "gain", label: "Gain", detail: "Add weight faster" },
+/**
+ * Read from the strategies themselves rather than restated here, so a label on
+ * this screen can never drift from the numbers behind the button. The order is
+ * the one people think in: hold, lose, reshape, build.
+ */
+const GOAL_ORDER: GoalMode[] = [
+  "maintain",
+  "lose-slow",
+  "lose",
+  "lose-fast",
+  "ripping",
+  "recomp",
+  "lean-gain",
+  "bulk",
+  "gain",
+];
+
+const GOAL_OPTIONS = GOAL_ORDER.map((value) => ({
+  value,
+  label: GOAL_STRATEGIES[value].label,
+  detail: GOAL_STRATEGIES[value].detail,
+}));
+
+const EXPERIENCE_OPTIONS: Array<{ value: TrainingExperience; label: string }> = [
+  { value: "beginner", label: "Under a year" },
+  { value: "intermediate", label: "One to three years" },
+  { value: "advanced", label: "Three years or more" },
 ];
 
 /** Numeric fields are strings so a new user sees empty boxes, not invented values. */
@@ -41,6 +62,13 @@ interface FormState {
   targetWeightKg: string;
   activityLevel: ActivityLevel | "";
   goalMode: GoalMode | "";
+  stepsPerDay: string;
+  resistanceSessions: string;
+  cardioSessions: string;
+  bodyFatPercent: string;
+  waistCm: string;
+  trainingExperience: TrainingExperience | "";
+  onMedication: boolean;
 }
 
 const EMPTY: FormState = {
@@ -52,6 +80,13 @@ const EMPTY: FormState = {
   targetWeightKg: "",
   activityLevel: "",
   goalMode: "",
+  stepsPerDay: "",
+  resistanceSessions: "",
+  cardioSessions: "",
+  bodyFatPercent: "",
+  waistCm: "",
+  trainingExperience: "",
+  onMedication: false,
 };
 
 export function GoalsPage() {
@@ -73,6 +108,13 @@ export function GoalsPage() {
       targetWeightKg: String(profile.targetWeightKg),
       activityLevel: profile.activityLevel,
       goalMode: profile.goalMode,
+      stepsPerDay: optionalText(profile.stepsPerDay),
+      resistanceSessions: optionalText(profile.resistanceSessions),
+      cardioSessions: optionalText(profile.cardioSessions),
+      bodyFatPercent: optionalText(profile.bodyFatPercent),
+      waistCm: optionalText(profile.waistCm),
+      trainingExperience: profile.trainingExperience ?? "",
+      onMedication: profile.onMedication,
     });
   }, [hasProfile, profile]);
 
@@ -83,10 +125,11 @@ export function GoalsPage() {
   const complete = missing.length === 0;
 
   // The preview only appears once there is enough to calculate honestly.
-  const targets = useMemo(
-    () => (complete ? calculateDailyTargets(toProfile(form, profile.theme)) : null),
+  const plan = useMemo(
+    () => (complete ? buildTargetPlan(toProfile(form, profile.theme)) : null),
     [complete, form, profile.theme],
   );
+  const targets = plan?.targets ?? null;
 
   const save = async () => {
     if (!complete || busy) return;
@@ -247,15 +290,150 @@ export function GoalsPage() {
               </div>
             </fieldset>
           </Card>
+
+          <Card className="p-5 sm:p-6">
+            <SectionHeading
+              icon={<Footprints size={17} />}
+              title="Movement and training"
+              detail="All optional — but steps are the single biggest thing that stops a target being too generous."
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Average daily steps"
+                hint="Your phone or watch will have a weekly average."
+              >
+                <input
+                  type="number"
+                  min="0"
+                  max="60000"
+                  inputMode="numeric"
+                  className={inputClass}
+                  value={form.stepsPerDay}
+                  onChange={(event) => set("stepsPerDay", event.target.value)}
+                  placeholder="7000"
+                />
+              </Field>
+              <Field label="Training experience" hint="How long you have lifted regularly.">
+                <select
+                  className={inputClass}
+                  value={form.trainingExperience}
+                  onChange={(event) =>
+                    set("trainingExperience", event.target.value as TrainingExperience | "")
+                  }
+                >
+                  <option value="">Prefer not to say</option>
+                  {EXPERIENCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Weights sessions a week">
+                <input
+                  type="number"
+                  min="0"
+                  max="14"
+                  inputMode="numeric"
+                  className={inputClass}
+                  value={form.resistanceSessions}
+                  onChange={(event) => set("resistanceSessions", event.target.value)}
+                  placeholder="3"
+                />
+              </Field>
+              <Field label="Cardio sessions a week">
+                <input
+                  type="number"
+                  min="0"
+                  max="14"
+                  inputMode="numeric"
+                  className={inputClass}
+                  value={form.cardioSessions}
+                  onChange={(event) => set("cardioSessions", event.target.value)}
+                  placeholder="2"
+                />
+              </Field>
+              <Field label="Body fat % (optional)" hint="Only if you have a real measurement.">
+                <input
+                  type="number"
+                  min="3"
+                  max="70"
+                  step="0.1"
+                  inputMode="decimal"
+                  className={inputClass}
+                  value={form.bodyFatPercent}
+                  onChange={(event) => set("bodyFatPercent", event.target.value)}
+                  placeholder="28"
+                />
+              </Field>
+              <Field label="Waist (cm, optional)" hint="Shows progress the scale can miss.">
+                <input
+                  type="number"
+                  min="40"
+                  max="200"
+                  step="0.5"
+                  inputMode="decimal"
+                  className={inputClass}
+                  value={form.waistCm}
+                  onChange={(event) => set("waistCm", event.target.value)}
+                  placeholder="94"
+                />
+              </Field>
+            </div>
+          </Card>
+
+          <Card className="p-5 sm:p-6">
+            <SectionHeading
+              icon={<Pill size={17} />}
+              title="Medication"
+              detail="One question, and it changes what these numbers can claim."
+            />
+
+            <label className="flex min-h-11 cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 shrink-0 accent-[var(--color-brand)]"
+                checked={form.onMedication}
+                onChange={(event) => set("onMedication", event.target.checked)}
+              />
+              <span className="text-[13px] leading-relaxed">
+                I take medication that could affect my appetite, weight or energy levels
+              </span>
+            </label>
+
+            {form.onMedication && (
+              <Alert tone="info" className="mt-3">
+                Noted — and worth being straight with you: these figures are worked out from your
+                body and your activity only. They do not account for what your medication does to
+                appetite, weight or the energy you burn. Show them to your doctor or pharmacist and
+                ask whether this target still fits your goal while you are taking it.
+              </Alert>
+            )}
+          </Card>
         </div>
 
         <Card className="p-5 lg:sticky lg:top-24">
           <h2 className="text-sm font-medium text-ink-muted">Your daily target</h2>
 
-          {targets ? (
+          {targets && plan ? (
             <>
               <p className="mt-3 text-4xl font-semibold tabular-nums">{targets.calories}</p>
               <p className="text-[13px] text-ink-muted">kcal per day</p>
+
+              <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+                Maintenance is estimated around{" "}
+                <span className="font-medium tabular-nums">
+                  {plan.estimate.maintenanceRange[0].toLocaleString()}–
+                  {plan.estimate.maintenanceRange[1].toLocaleString()}
+                </span>{" "}
+                kcal.{" "}
+                {plan.adjustmentKcal === 0
+                  ? "This target sits at maintenance."
+                  : `This is ${Math.abs(plan.adjustmentPercent)}% ${
+                    plan.adjustmentKcal < 0 ? "below" : "above"
+                  } it.`}
+              </p>
 
               <dl className="mt-5 border-t border-line-soft">
                 <TargetRow label="Protein" value={`${targets.protein}g`} colour="var(--color-macro-protein)" />
@@ -264,9 +442,43 @@ export function GoalsPage() {
                 <TargetRow label="Fibre" value={`${targets.fibre}g`} colour="var(--color-macro-fibre)" />
               </dl>
 
+              {plan.weeklyChangeKg && plan.weeklyChangeKg[1] !== 0 && (
+                <p className="mt-3 text-[12px] text-ink-muted">
+                  Expect roughly{" "}
+                  <span className="font-medium tabular-nums">
+                    {Math.abs(plan.weeklyChangeKg[0])}–{Math.abs(plan.weeklyChangeKg[1])} kg
+                  </span>{" "}
+                  a week {plan.weeklyChangeKg[1] < 0 ? "down" : "on"}.
+                </p>
+              )}
+
+              {!plan.weeklyChangeKg && (
+                <p className="mt-3 text-[12px] text-ink-muted">
+                  The scale is not the measure here — judge this one on the waist tape, your
+                  strength in the gym and how clothes fit.
+                </p>
+              )}
+
+              {plan.reducedForFloor && (
+                <Alert tone="warn" className="mt-3">
+                  A full deficit at your size would drop below what anyone should eat unsupervised,
+                  so it has been eased back to {targets.calories.toLocaleString()} kcal.
+                </Alert>
+              )}
+
+              {GOAL_STRATEGIES[toProfile(form, profile.theme).goalMode].needsResistanceTraining && (
+                <p className="mt-3 text-[12px] leading-relaxed text-ink-muted">
+                  This goal only works with weights. Without resistance training you will lose or
+                  fail to build the muscle it is designed to protect.
+                </p>
+              )}
+
               <p className="mt-4 text-[11px] leading-relaxed text-ink-faint">
-                Calculated with the Mifflin&ndash;St Jeor equation and your activity level. It is a
-                starting point — adjust after two weeks of real data.
+                {plan.estimate.fromSteps
+                  ? "Worked out from Mifflin–St Jeor, your step count and your training."
+                  : "Worked out from Mifflin–St Jeor and your stated activity level. Adding your daily steps would tighten this considerably."}{" "}
+                It is an estimate, not a measurement — log your weight for a fortnight and the app
+                will recalculate it from what actually happens.
               </p>
             </>
           ) : (
@@ -385,6 +597,21 @@ function inRange(value: string, min: number, max: number): boolean {
   return value.trim() !== "" && Number.isFinite(number) && number >= min && number <= max;
 }
 
+/**
+ * An empty box means "I did not say", not "zero". The calculator behaves
+ * differently for the two — a missing step count falls back to the activity
+ * band, where a zero would be taken at face value.
+ */
+function optionalNumber(value: string): number | null {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalText(value: number | null): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
 function toProfile(form: FormState, theme: UserProfile["theme"]): UserProfile {
   return {
     name: form.name.trim(),
@@ -397,6 +624,13 @@ function toProfile(form: FormState, theme: UserProfile["theme"]): UserProfile {
     goalMode: (form.goalMode || "maintain") as GoalMode,
     theme,
     onboarded: true,
+    stepsPerDay: optionalNumber(form.stepsPerDay),
+    resistanceSessions: optionalNumber(form.resistanceSessions),
+    cardioSessions: optionalNumber(form.cardioSessions),
+    bodyFatPercent: optionalNumber(form.bodyFatPercent),
+    waistCm: optionalNumber(form.waistCm),
+    trainingExperience: form.trainingExperience || null,
+    onMedication: form.onMedication,
     // Finishing the wizard is a request to work the targets out again, so any
     // figure the coach or the user had set by hand gives way to the fresh
     // calculation. Settings is where a bespoke plan is kept and reset.

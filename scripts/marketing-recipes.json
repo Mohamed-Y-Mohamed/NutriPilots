@@ -1,0 +1,853 @@
+[
+  {
+    "id": "2a8ab71a-fe37-4daf-a617-f6c16a63b7a7",
+    "name": "Salmon Avocado Salad",
+    "description": "A British seafood featuring Salmon, Avocado, Cucumber.",
+    "image_url": "https://www.themealdb.com/images/media/meals/1549542994.jpg",
+    "servings": 6,
+    "prep_time_minutes": null,
+    "cook_time_minutes": null,
+    "instructions": "Season the salmon, then rub with oil. Mix the dressing ingredients together. Halve, stone, peel and slice the avocados. Halve and quarter the cucumber lengthways, then cut into slices. Divide salad, avocado and cucumber between four plates, then drizzle with half the dressing.\r\n\r\nHeat a non-stick pan. Add the salmon and fry for 3-4 mins on each side until crisp but still moist inside. Put a salmon fillet on top of each salad and drizzle over the remaining dressing. Serve warm.",
+    "calories_per_serving": 430.2,
+    "protein_per_serving_g": 23.133,
+    "carbs_per_serving_g": 37.15,
+    "fat_per_serving_g": 20.4,
+    "fibre_per_serving_g": 11.023,
+    "saturated_fat_per_serving_g": 5.418,
+    "sugar_per_serving_g": 23.047,
+    "sodium_per_serving_mg": 275.678,
+    "cholesterol_per_serving_mg": 73.333,
+    "cuisine": "British",
+    "dietary_tags": [
+      "pescatarian",
+      "dairy-free",
+      "gluten-free",
+      "high-fibre"
+    ],
+    "ingredient_count": 8,
+    "ingredients": [
+      {
+        "id": "ce7b14e7-9a0c-441f-973d-43569603e4cb",
+        "unit": "g",
+        "notes": null,
+        "food_id": "038efb1a-bd1b-494a-9dd7-224d383803ff",
+        "position": 1,
+        "quantity": 400,
+        "weight_g": 400,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "400g Salmon",
+        "ingredient_name": "Salmon",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "salmon"
+      },
+      {
+        "id": "4e17f3a1-69ad-4cae-a755-a95e89d3aeda",
+        "unit": "item",
+        "notes": null,
+        "food_id": "57de1c7a-3665-4d72-9967-227f148336fb",
+        "position": 2,
+        "quantity": 3,
+        "weight_g": 450,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "3 Avocado",
+        "ingredient_name": "Avocado",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "avocado"
+      },
+      {
+        "id": "b719d625-18b0-4ed0-a6cd-c2b4ae643b7e",
+        "unit": "item",
+        "notes": null,
+        "food_id": "a1264b0c-ad71-43e7-bf44-75a8865be89f",
+        "position": 3,
+        "quantity": 1,
+        "weight_g": 100,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "1 Cucumber",
+        "ingredient_name": "Cucumber",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "cucumber"
+      },
+      {
+        "id": "3b8869d2-c2ea-4bca-8209-c872ab2351b0",
+        "unit": "g",
+        "notes": null,
+        "food_id": "7e72e831-9383-44e4-95bc-6a1d8364ef14",
+        "position": 4,
+        "quantity": 400,
+        "weight_g": 400,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "400g Spinach",
+        "ingredient_name": "Spinach",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "spinach"
+      },
+      {
+        "id": "d0570807-92df-4b6d-9937-a16108fcc74d",
+        "unit": "tbsp",
+        "notes": null,
+        "food_id": "33945a2a-d090-4cd0-ac33-5f68761ce0cb",
+        "position": 5,
+        "quantity": 4,
+        "weight_g": 60,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "4 tbs Mint",
+        "ingredient_name": "Mint",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "mint"
+      },
+      {
+        "id": "06f9f666-a829-4f67-bf61-70efb647457e",
+        "unit": null,
+        "notes": null,
+        "food_id": "25e1d3a7-bb1c-4ed3-babb-0eecbc5233ea",
+        "position": 6,
+        "quantity": null,
+        "weight_g": 10,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "zest and juice of 1 Lime",
+        "ingredient_name": "Lime",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "lime"
+      },
+      {
+        "id": "341e390c-7aaf-4c5a-9d4a-f1805e4a6e1f",
+        "unit": "tsp",
+        "notes": null,
+        "food_id": "a7280b53-caf8-438e-869b-b2f6d7b9ac78",
+        "position": 7,
+        "quantity": 2,
+        "weight_g": 14,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "2 tsp Honey",
+        "ingredient_name": "Honey",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "honey"
+      },
+      {
+        "id": "81d8180c-de6c-4833-892d-64ab97e95e87",
+        "unit": "tbsp",
+        "notes": null,
+        "food_id": "5de6f796-6a85-4d37-aa16-3762308bb735",
+        "position": 8,
+        "quantity": 3,
+        "weight_g": 41.4,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "3 tbs Olive Oil",
+        "ingredient_name": "Olive Oil",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "olive oil"
+      }
+    ],
+    "video_url": "https://www.youtube-nocookie.com/embed/FJiu2S0Xap0",
+    "video_source_url": "https://www.youtube.com/watch?v=FJiu2S0Xap0",
+    "video_duration_seconds": null,
+    "video_verified_short": false
+  },
+  {
+    "id": "b0da3402-46f0-4a8b-9fdc-5f11a48694ee",
+    "name": "Shakshuka",
+    "description": "North African eggs poached in a spiced tomato, onion, chilli and garlic sauce.",
+    "image_url": "https://images.immediate.co.uk/production/volatile/sites/30/2020/08/recipe-image-legacy-id-12141_11-fd804a3.jpg?quality=90&resize=500%2C454",
+    "servings": 2,
+    "prep_time_minutes": 5,
+    "cook_time_minutes": 20,
+    "instructions": "Soften the onions, chilli, garlic and coriander stalks in olive oil. Add tomatoes and a little sugar and simmer until thick. Make four wells in the sauce, add the eggs, cover and cook gently until set to your preference, then finish with coriander leaves.",
+    "calories_per_serving": 340,
+    "protein_per_serving_g": 21,
+    "carbs_per_serving_g": 21,
+    "fat_per_serving_g": 20,
+    "fibre_per_serving_g": 0,
+    "saturated_fat_per_serving_g": 5,
+    "sugar_per_serving_g": 17,
+    "sodium_per_serving_mg": 480,
+    "cholesterol_per_serving_mg": 372,
+    "cuisine": "North African",
+    "dietary_tags": [
+      "vegetarian",
+      "dairy-free",
+      "gluten-free",
+      "weight-loss"
+    ],
+    "ingredient_count": 8,
+    "ingredients": [
+      {
+        "name": "olive oil",
+        "unit": "tbsp",
+        "quantity": 1,
+        "original_text": "1 tbsp olive oil"
+      },
+      {
+        "name": "red onions",
+        "unit": "item",
+        "quantity": 2,
+        "original_text": "2 red onions"
+      },
+      {
+        "name": "red chilli",
+        "unit": "item",
+        "quantity": 1,
+        "original_text": "1 red chilli"
+      },
+      {
+        "name": "garlic",
+        "unit": "clove",
+        "quantity": 1,
+        "original_text": "1 garlic clove"
+      },
+      {
+        "name": "coriander",
+        "unit": "small bunch",
+        "quantity": 1,
+        "original_text": "small bunch coriander"
+      },
+      {
+        "name": "canned cherry tomatoes",
+        "unit": "can",
+        "quantity": 2,
+        "original_text": "2 cans cherry tomatoes"
+      },
+      {
+        "name": "caster sugar",
+        "unit": "tsp",
+        "quantity": 1,
+        "original_text": "1 tsp caster sugar"
+      },
+      {
+        "name": "eggs",
+        "unit": "item",
+        "quantity": 4,
+        "original_text": "4 eggs"
+      }
+    ],
+    "video_url": "https://www.youtube-nocookie.com/embed/aOHOyWbxb9g",
+    "video_source_url": "https://www.youtube.com/shorts/aOHOyWbxb9g",
+    "video_duration_seconds": null,
+    "video_verified_short": true
+  },
+  {
+    "id": "c925a46e-e9da-4ae7-80df-7bd3d0dcea33",
+    "name": "Smoky Chipotle Chicken Wraps",
+    "description": "High-protein smoky chipotle chicken wraps with pineapple salsa and creamy chipotle sauce for batch meal prep. Meal categories: meal-prep, lunch, dinner.",
+    "image_url": "https://i.ytimg.com/vi/1LGRSZ1ZzF0/hqdefault.jpg",
+    "servings": 12,
+    "prep_time_minutes": 30,
+    "cook_time_minutes": 25,
+    "instructions": "Cube and season both chicken cuts with chipotle, lime and oil; marinate. Blend the yoghurt sauce and chill. Mix the pineapple salsa and chill. Bake chicken at 200°C for 20 minutes, then grill about 5 minutes until browned and fully cooked. Toast wraps and assemble with chicken, salsa and sauce.",
+    "calories_per_serving": 413,
+    "protein_per_serving_g": 36,
+    "carbs_per_serving_g": 35,
+    "fat_per_serving_g": 14,
+    "fibre_per_serving_g": 8.5,
+    "saturated_fat_per_serving_g": 3.2,
+    "sugar_per_serving_g": 8.2,
+    "sodium_per_serving_mg": 980,
+    "cholesterol_per_serving_mg": 105,
+    "cuisine": "Mexican-inspired",
+    "dietary_tags": [
+      "omnivore",
+      "high-protein",
+      "high-fibre"
+    ],
+    "ingredient_count": 21,
+    "ingredients": [
+      {
+        "unit": "g",
+        "notes": "raw, cubed",
+        "position": 1,
+        "quantity": 800,
+        "original_text": "800 g boneless chicken thighs",
+        "ingredient_name": "boneless chicken thighs"
+      },
+      {
+        "unit": "g",
+        "notes": "raw, cubed",
+        "position": 2,
+        "quantity": 800,
+        "original_text": "800 g chicken breast",
+        "ingredient_name": "chicken breast"
+      },
+      {
+        "unit": "tsp",
+        "notes": null,
+        "position": 3,
+        "quantity": 3,
+        "original_text": "3 tsp salt",
+        "ingredient_name": "salt"
+      },
+      {
+        "unit": "tsp",
+        "notes": null,
+        "position": 4,
+        "quantity": 5,
+        "original_text": "5 tsp garlic powder",
+        "ingredient_name": "garlic powder"
+      },
+      {
+        "unit": "tsp",
+        "notes": null,
+        "position": 5,
+        "quantity": 5,
+        "original_text": "5 tsp smoked paprika",
+        "ingredient_name": "smoked paprika"
+      },
+      {
+        "unit": "tsp",
+        "notes": null,
+        "position": 6,
+        "quantity": 2.5,
+        "original_text": "2.5 tsp ground cumin",
+        "ingredient_name": "ground cumin"
+      },
+      {
+        "unit": "tsp",
+        "notes": null,
+        "position": 7,
+        "quantity": 4,
+        "original_text": "4 tsp onion powder",
+        "ingredient_name": "onion powder"
+      },
+      {
+        "unit": "g",
+        "notes": null,
+        "position": 8,
+        "quantity": 220,
+        "original_text": "220 g chipotle paste",
+        "ingredient_name": "chipotle paste"
+      },
+      {
+        "unit": "whole",
+        "notes": "juiced",
+        "position": 9,
+        "quantity": 3,
+        "original_text": "3 whole limes",
+        "ingredient_name": "limes"
+      },
+      {
+        "unit": "g",
+        "notes": null,
+        "position": 10,
+        "quantity": 40,
+        "original_text": "40 g olive oil",
+        "ingredient_name": "olive oil"
+      },
+      {
+        "unit": "g",
+        "notes": "FAGE specified",
+        "position": 11,
+        "quantity": 300,
+        "original_text": "300 g fat-free Greek yoghurt",
+        "ingredient_name": "fat-free Greek yoghurt"
+      },
+      {
+        "unit": "g",
+        "notes": null,
+        "position": 12,
+        "quantity": 100,
+        "original_text": "100 g light mayonnaise",
+        "ingredient_name": "light mayonnaise"
+      },
+      {
+        "unit": "g",
+        "notes": null,
+        "position": 13,
+        "quantity": 150,
+        "original_text": "150 g pineapple chunks",
+        "ingredient_name": "pineapple chunks"
+      },
+      {
+        "unit": "g",
+        "notes": null,
+        "position": 14,
+        "quantity": 35,
+        "original_text": "35 g evaporated milk",
+        "ingredient_name": "evaporated milk"
+      },
+      {
+        "unit": "g",
+        "notes": "chopped",
+        "position": 15,
+        "quantity": 200,
+        "original_text": "200 g red onion",
+        "ingredient_name": "red onion"
+      },
+      {
+        "unit": "g",
+        "notes": "chopped",
+        "position": 16,
+        "quantity": 200,
+        "original_text": "200 g red bell pepper",
+        "ingredient_name": "red bell pepper"
+      },
+      {
+        "unit": "g",
+        "notes": "chopped",
+        "position": 17,
+        "quantity": 200,
+        "original_text": "200 g green bell pepper",
+        "ingredient_name": "green bell pepper"
+      },
+      {
+        "unit": "g",
+        "notes": "diced",
+        "position": 18,
+        "quantity": 300,
+        "original_text": "300 g fresh pineapple",
+        "ingredient_name": "fresh pineapple"
+      },
+      {
+        "unit": "cup",
+        "notes": "chopped",
+        "position": 19,
+        "quantity": 1,
+        "original_text": "1 cup fresh coriander",
+        "ingredient_name": "fresh coriander"
+      },
+      {
+        "unit": "g",
+        "notes": null,
+        "position": 20,
+        "quantity": 30,
+        "original_text": "30 g honey",
+        "ingredient_name": "honey"
+      },
+      {
+        "unit": "wraps",
+        "notes": "Mission specified",
+        "position": 21,
+        "quantity": 12,
+        "original_text": "12 wraps low-carb wraps",
+        "ingredient_name": "low-carb wraps"
+      }
+    ],
+    "video_url": "https://www.youtube-nocookie.com/embed/1LGRSZ1ZzF0",
+    "video_source_url": "https://www.youtube.com/shorts/1LGRSZ1ZzF0",
+    "video_duration_seconds": 70,
+    "video_verified_short": true
+  },
+  {
+    "id": "0531f967-5e70-4395-9894-78d82365bcea",
+    "name": "Thai curry noodle soup",
+    "description": "A Thai seafood featuring Vegetable Oil, Thai Green Curry Paste, Stir-fry Vegetables.",
+    "image_url": "https://www.themealdb.com/images/media/meals/118oj61763423896.jpg",
+    "servings": 3,
+    "prep_time_minutes": null,
+    "cook_time_minutes": null,
+    "instructions": "step 1\r\nHeat the oil in a saucepan over a medium heat and cook the curry paste for 1 min before adding the stir-fry veg and prawns. Cook for 3 mins until the prawns are mostly pink, then add the coconut milk, veg stock and noodles.\r\n\r\nstep 2\r\nBring to the boil, then reduce the heat to a simmer and cook for 5 mins until the noodles are cooked through and the veg is tender but still has a bite. Divide between two bowls and sprinkle over the herbs, chilli and spring onion.",
+    "calories_per_serving": 606.32,
+    "protein_per_serving_g": 29.153,
+    "carbs_per_serving_g": 86.93,
+    "fat_per_serving_g": 15.328,
+    "fibre_per_serving_g": 13.908,
+    "saturated_fat_per_serving_g": 8.166,
+    "sugar_per_serving_g": 11.123,
+    "sodium_per_serving_mg": 1792.21,
+    "cholesterol_per_serving_mg": 135.5,
+    "cuisine": "Thai",
+    "dietary_tags": [
+      "pescatarian",
+      "high-fibre"
+    ],
+    "ingredient_count": 11,
+    "ingredients": [
+      {
+        "id": "1a488505-c379-464c-81f8-f9490156001f",
+        "unit": "tsp",
+        "notes": null,
+        "food_id": "a18f722b-01c7-4d75-b360-97f7b510ed87",
+        "position": 1,
+        "quantity": 1,
+        "weight_g": 4.6,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "1 teaspoon Vegetable Oil",
+        "ingredient_name": "Vegetable Oil",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "vegetable oil"
+      },
+      {
+        "id": "a857c336-a73b-4809-9e3e-b7852315f0b2",
+        "unit": "tbsp",
+        "notes": null,
+        "food_id": "3a48a88a-6bf2-4f13-bcb7-ad1a1cc4fe6a",
+        "position": 2,
+        "quantity": 1,
+        "weight_g": 15,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "1 tbsp Thai Green Curry Paste",
+        "ingredient_name": "Thai Green Curry Paste",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "thai green curry paste"
+      },
+      {
+        "id": "d14dc198-00e5-419b-9c70-228173a30c0e",
+        "unit": "g",
+        "notes": null,
+        "food_id": "6d6e544a-32ad-44a4-8afc-592a8597c400",
+        "position": 3,
+        "quantity": 220,
+        "weight_g": 220,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "220g Stir-fry Vegetables",
+        "ingredient_name": "Stir-fry Vegetables",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "stir-fry vegetables"
+      },
+      {
+        "id": "75d5c553-a745-476a-9dfc-744d8230a665",
+        "unit": "g",
+        "notes": null,
+        "food_id": "e63f6956-db12-4201-b02f-49a7645a1cdc",
+        "position": 4,
+        "quantity": 150,
+        "weight_g": 150,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "150g Raw King Prawns",
+        "ingredient_name": "Raw King Prawns",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "raw king prawns"
+      },
+      {
+        "id": "9352841e-236c-460a-b1d1-ff0c807f3219",
+        "unit": "ml",
+        "notes": null,
+        "food_id": "ef7b0f3b-d2bb-4e34-9ef8-db22f4db649b",
+        "position": 5,
+        "quantity": 150,
+        "weight_g": 90,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "150ml Coconut Milk",
+        "ingredient_name": "Coconut Milk",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "coconut milk"
+      },
+      {
+        "id": "57549d85-e949-4109-bfd3-9e2ec626ec2d",
+        "unit": "ml",
+        "notes": null,
+        "food_id": "21d4c032-3ba5-4df8-9632-06004f6ed505",
+        "position": 6,
+        "quantity": 225,
+        "weight_g": 225,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "225ml Vegetable Stock",
+        "ingredient_name": "Vegetable Stock",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "vegetable stock"
+      },
+      {
+        "id": "1e2f28a4-57b7-4f12-ad2c-5fff50e3192f",
+        "unit": "g",
+        "notes": null,
+        "food_id": "c16d2b57-4dca-495d-89e0-e2eb5aabc2ea",
+        "position": 7,
+        "quantity": 250,
+        "weight_g": 250,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "250g Udon Noodles",
+        "ingredient_name": "Udon Noodles",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "udon noodles"
+      },
+      {
+        "id": "4e460ba0-6952-453e-a54e-25e0db89f2b1",
+        "unit": "g",
+        "notes": null,
+        "food_id": "75fbbfde-02a0-40e8-b1fa-eec44067eebc",
+        "position": 8,
+        "quantity": 10,
+        "weight_g": 10,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "10g Coriander",
+        "ingredient_name": "Coriander",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "coriander"
+      },
+      {
+        "id": "7d48c857-4ebf-431d-a4c1-f061aeaf92fe",
+        "unit": "g",
+        "notes": null,
+        "food_id": "b9c05193-cc56-46ae-b256-adc0c2c4093b",
+        "position": 9,
+        "quantity": 10,
+        "weight_g": 10,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "10g Basil",
+        "ingredient_name": "Basil",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "basil"
+      },
+      {
+        "id": "c3f13d4b-8855-4037-ba8e-883db6d087a3",
+        "unit": "item",
+        "notes": null,
+        "food_id": "136806f2-068e-407b-b92f-74a2f44faa65",
+        "position": 10,
+        "quantity": 1,
+        "weight_g": 12,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "1 sliced Red Chilli",
+        "ingredient_name": "Red Chilli",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "red chilli"
+      },
+      {
+        "id": "dde89360-c622-4bec-a00c-5b4e65dec70f",
+        "unit": "item",
+        "notes": null,
+        "food_id": "81c7216a-4f17-4ee2-baf0-0c67f252f937",
+        "position": 11,
+        "quantity": 1,
+        "weight_g": 15,
+        "created_at": "2026-08-07T23:08:04.589329+00:00",
+        "original_text": "1 sliced Spring Onions",
+        "ingredient_name": "Spring Onions",
+        "confidence_score": 70,
+        "weight_data_type": "estimated",
+        "estimation_method": "Parsed source measure with food-specific density or standard edible item weight",
+        "normalized_ingredient_name": "spring onions"
+      }
+    ],
+    "video_url": "https://www.youtube-nocookie.com/embed/FN8tcugjCFs",
+    "video_source_url": "https://www.youtube.com/watch?v=FN8tcugjCFs",
+    "video_duration_seconds": null,
+    "video_verified_short": false
+  },
+  {
+    "id": "5be6f2e1-378f-48a3-a72b-0e3935acef7a",
+    "name": "Fattoush salad",
+    "description": "Classic Middle Eastern chopped salad with romaine, tomato, cucumber, herbs, toasted pitta, sumac and lemon dressing.",
+    "image_url": "https://images.immediate.co.uk/production/volatile/sites/30/2020/08/fattoush-76b889c.jpg?quality=90&resize=440%2C400",
+    "servings": 2,
+    "prep_time_minutes": 15,
+    "cook_time_minutes": null,
+    "instructions": "Combine the chopped vegetables and herbs. Mix garlic, vinegar, olive oil and lemon juice for the dressing. Toast the pitta until lightly golden and tear into pieces, then toss with the salad and dressing and finish with sumac.",
+    "calories_per_serving": 358,
+    "protein_per_serving_g": 12,
+    "carbs_per_serving_g": 57,
+    "fat_per_serving_g": 18,
+    "fibre_per_serving_g": 6,
+    "saturated_fat_per_serving_g": 1,
+    "sugar_per_serving_g": 10,
+    "sodium_per_serving_mg": 440,
+    "cholesterol_per_serving_mg": 0,
+    "cuisine": "Levantine",
+    "dietary_tags": [
+      "vegan",
+      "dairy-free",
+      "weight-loss",
+      "high-fibre"
+    ],
+    "ingredient_count": 12,
+    "ingredients": [
+      {
+        "name": "tomatoes",
+        "unit": "item",
+        "quantity": 2,
+        "original_text": "2 tomatoes"
+      },
+      {
+        "name": "cucumber",
+        "unit": "item",
+        "quantity": 0.25,
+        "original_text": "1/4 cucumber"
+      },
+      {
+        "name": "red onion",
+        "unit": "item",
+        "quantity": 0.5,
+        "original_text": "1/2 red onion"
+      },
+      {
+        "name": "romaine lettuce",
+        "unit": "small head",
+        "quantity": 1,
+        "original_text": "1 small head romaine lettuce"
+      },
+      {
+        "name": "mint",
+        "unit": "handful",
+        "quantity": 1,
+        "original_text": "handful mint"
+      },
+      {
+        "name": "parsley",
+        "unit": "handful",
+        "quantity": 1,
+        "original_text": "handful parsley"
+      },
+      {
+        "name": "pitta bread",
+        "unit": "item",
+        "quantity": 2,
+        "original_text": "2 pitta breads"
+      },
+      {
+        "name": "sumac",
+        "unit": "tsp",
+        "quantity": 1,
+        "original_text": "1 tsp sumac"
+      },
+      {
+        "name": "garlic",
+        "unit": "clove",
+        "quantity": 0.5,
+        "original_text": "1/2 garlic clove"
+      },
+      {
+        "name": "red wine vinegar",
+        "unit": "tbsp",
+        "quantity": 2,
+        "original_text": "2 tbsp red wine vinegar"
+      },
+      {
+        "name": "extra virgin olive oil",
+        "unit": "tbsp",
+        "quantity": 1,
+        "original_text": "1 tbsp extra virgin olive oil"
+      },
+      {
+        "name": "lemon juice",
+        "unit": "lemon",
+        "quantity": 0.5,
+        "original_text": "juice of 1/2 lemon"
+      }
+    ],
+    "video_url": "https://www.youtube-nocookie.com/embed/Lh2ujK9IFS0",
+    "video_source_url": "https://www.youtube.com/shorts/Lh2ujK9IFS0",
+    "video_duration_seconds": null,
+    "video_verified_short": true
+  },
+  {
+    "id": "7bcb9f9b-9f18-4a4f-9d50-bb0022152096",
+    "name": "Paleo Coconut Curry Stir Fry",
+    "description": "A Paleo-style chicken and broccoli stir-fry with coconut milk, ginger, lime and curry spices. It is dairy-free and high in protein; the source nutrition is retained without making a medical or weight-loss claim.",
+    "image_url": "https://i.ytimg.com/vi/CwiExo4akIE/hqdefault.jpg",
+    "servings": 4,
+    "prep_time_minutes": 15,
+    "cook_time_minutes": 20,
+    "instructions": "1. Whisk coconut milk, ginger, lime juice, fish sauce, oyster sauce, garlic, sriracha and sugar or approved substitute in a bowl. 2. Heat avocado oil in a large skillet or wok. Add chicken, onion and curry powder and stir-fry until the chicken is browned and the onion softens. 3. Add broccoli and coconut sauce. Bring to a simmer and cook until the chicken is cooked through and broccoli is tender-crisp.",
+    "calories_per_serving": 372,
+    "protein_per_serving_g": 26,
+    "carbs_per_serving_g": 16,
+    "fat_per_serving_g": 24,
+    "fibre_per_serving_g": 3,
+    "saturated_fat_per_serving_g": 17,
+    "sugar_per_serving_g": 9,
+    "sodium_per_serving_mg": 387,
+    "cholesterol_per_serving_mg": 59,
+    "cuisine": "Thai-inspired Paleo",
+    "dietary_tags": [
+      "omnivore",
+      "dairy-free",
+      "high-protein"
+    ],
+    "ingredient_count": 13,
+    "ingredients": [
+      {
+        "position": 1,
+        "original_text": "1 1/2 cups coconut milk",
+        "ingredient_name": "1 1/2 cups coconut milk"
+      },
+      {
+        "position": 2,
+        "original_text": "1 tablespoon minced fresh ginger",
+        "ingredient_name": "1 tablespoon minced fresh ginger"
+      },
+      {
+        "position": 3,
+        "original_text": "1 tablespoon fresh lime juice",
+        "ingredient_name": "1 tablespoon fresh lime juice"
+      },
+      {
+        "position": 4,
+        "original_text": "1 tablespoon fish sauce",
+        "ingredient_name": "1 tablespoon fish sauce"
+      },
+      {
+        "position": 5,
+        "original_text": "1 teaspoon oyster sauce",
+        "ingredient_name": "1 teaspoon oyster sauce"
+      },
+      {
+        "position": 6,
+        "original_text": "2 teaspoons minced garlic",
+        "ingredient_name": "2 teaspoons minced garlic"
+      },
+      {
+        "position": 7,
+        "original_text": "1/2 teaspoon sriracha sauce",
+        "ingredient_name": "1/2 teaspoon sriracha sauce"
+      },
+      {
+        "position": 8,
+        "original_text": "2 tablespoons sugar or Paleo-approved substitute",
+        "ingredient_name": "2 tablespoons sugar or Paleo-approved substitute"
+      },
+      {
+        "position": 9,
+        "original_text": "1 tablespoon avocado oil",
+        "ingredient_name": "1 tablespoon avocado oil"
+      },
+      {
+        "position": 10,
+        "original_text": "1 pound skinless boneless chicken breast, cubed",
+        "ingredient_name": "1 pound skinless boneless chicken breast, cubed"
+      },
+      {
+        "position": 11,
+        "original_text": "1/2 onion, sliced",
+        "ingredient_name": "1/2 onion, sliced"
+      },
+      {
+        "position": 12,
+        "original_text": "1 1/2 teaspoons curry powder",
+        "ingredient_name": "1 1/2 teaspoons curry powder"
+      },
+      {
+        "position": 13,
+        "original_text": "2 cups broccoli florets",
+        "ingredient_name": "2 cups broccoli florets"
+      }
+    ],
+    "video_url": "https://www.youtube-nocookie.com/embed/CwiExo4akIE",
+    "video_source_url": "https://www.youtube.com/watch?v=CwiExo4akIE",
+    "video_duration_seconds": 152,
+    "video_verified_short": true
+  }
+]

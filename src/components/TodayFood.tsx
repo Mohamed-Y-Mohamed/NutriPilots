@@ -1,5 +1,5 @@
 import { Plus, Trash2, UtensilsCrossed } from "lucide-react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { ScrollingText } from "./ScrollingText";
 import { Button, Card, IconButton, Segmented } from "./ui";
 import { useAppData } from "../state/AppDataContext";
@@ -102,10 +102,15 @@ function MealGroup({
         <p className="py-2.5 text-[12px] text-ink-faint">Nothing logged.</p>
       ) : (
         <ul className="grid min-w-0">
-          {entries.map((entry) => (
+          {entries.map((entry, index) => (
             <li
               key={entry.id}
-              className="flex min-h-12 min-w-0 items-center gap-2.5 border-b border-line-soft py-1.5 last:border-0"
+              // Arriving in order rather than all at once. Capped at six steps
+              // so a long day's diary still finishes appearing quickly — past
+              // about a quarter of a second this stops reading as polish and
+              // starts reading as the list being slow to load.
+              style={{ "--np-i": Math.min(index, 6) } as CSSProperties}
+              className="animate-stagger flex min-h-12 min-w-0 items-center gap-2.5 border-b border-line-soft py-1.5 last:border-0"
             >
               <span className="min-w-0 flex-1">
                 <ScrollingText className="text-[13px] font-medium" title={entry.name}>

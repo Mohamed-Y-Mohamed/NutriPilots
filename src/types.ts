@@ -94,8 +94,24 @@ export interface Recipe {
   verification?: FoodReview | null;
 }
 
-export type GoalMode = "lose-fast" | "lose" | "maintain" | "lean-gain" | "gain";
+/**
+ * What the user is trying to do. Every one of these maps to a percentage of
+ * maintenance in lib/energy.ts rather than to a flat calorie change, which is
+ * why "lose faster" means the same thing to a 55 kg woman and a 166 kg man.
+ */
+export type GoalMode =
+  | "maintain"
+  | "lose-slow"
+  | "lose"
+  | "lose-fast"
+  | "ripping"
+  | "recomp"
+  | "lean-gain"
+  | "bulk"
+  | "gain";
+
 export type ActivityLevel = "sedentary" | "light" | "moderate" | "very" | "athlete";
+export type TrainingExperience = "beginner" | "intermediate" | "advanced";
 export type ThemePreference = "system" | "light" | "dark";
 
 export interface UserProfile {
@@ -110,6 +126,26 @@ export interface UserProfile {
   theme: ThemePreference;
   onboarded: boolean;
   /**
+   * Average daily steps. The one input that stops an activity level being
+   * talked up: three gym sessions and fifteen sitting hours is not an active
+   * day, and only a step count says so. Null when the user has not told us.
+   */
+  stepsPerDay: number | null;
+  /** Sessions a week, counted apart because they cost different energy. */
+  resistanceSessions: number | null;
+  cardioSessions: number | null;
+  /** Optional, and never treated as precise — smart-scale readings are not. */
+  bodyFatPercent: number | null;
+  /** Optional. The measure that shows recomposition when the scale will not. */
+  waistCm: number | null;
+  trainingExperience: TrainingExperience | null;
+  /**
+   * Whether the user takes medication that could affect appetite, weight or
+   * energy use. The app does not model that effect and must not pretend to —
+   * this flag exists so it can say so plainly instead.
+   */
+  onMedication: boolean;
+  /**
    * Daily figures that replace the calculated ones. Null means the formula
    * still decides, which is what every profile starts as.
    */
@@ -122,6 +158,22 @@ export interface UserProfile {
 
 /** The coach proposed them and the user accepted, or the user typed them. */
 export type TargetsSource = "coach" | "manual";
+
+/**
+ * One morning on the scales.
+ *
+ * A single weigh-in is close to meaningless — food in the gut, salt, glycogen
+ * and a menstrual cycle all move it by more than a week of fat loss does — so
+ * nothing in the app reads one of these on its own. They exist to be averaged,
+ * which is what lib/weightTrend.ts does with them.
+ */
+export interface WeightLog {
+  /** Local calendar day, YYYY-MM-DD. One entry per day. */
+  date: string;
+  weightKg: number;
+  /** Optional, and measured far less often than weight. */
+  waistCm: number | null;
+}
 
 export interface DailyTargets {
   calories: number;

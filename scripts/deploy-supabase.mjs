@@ -98,6 +98,13 @@ function deployFunctions() {
       {
         cwd: root,
         stdio: ["ignore", "pipe", "pipe"],
+        // Node 20.12+ refuses to spawn .cmd and .bat without a shell, so on
+        // Windows this fails with EINVAL before the CLI is ever reached. Every
+        // argument here is a fixed literal — no user input, no spaces — so
+        // handing them to cmd.exe introduces nothing to escape. The access
+        // token stays in `env` rather than argv, where a process list would
+        // show it.
+        shell: process.platform === "win32",
         env: { ...process.env, SUPABASE_ACCESS_TOKEN: TOKEN },
       },
     );

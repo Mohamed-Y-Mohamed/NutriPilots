@@ -60,45 +60,84 @@ export function DiaryPage() {
       .catch(() => setRecents([]));
   }, []);
 
-  // Ingredient search hits the network, so it is debounced.
+  /**
+   * Ingredient search hits the network, so it is debounced.
+   *
+   * `cancelled` matters as much as the debounce. Clearing the timeout only
+   * helps while the request has not started yet — once it is in flight nothing
+   * recalls it, so without this flag a slow response for "chi" can land after
+   * a fast one for "chicken" and overwrite the newer results with older ones.
+   * The error path is worse: a request the user has already moved on from
+   * fails, and paints "Could not load foods." over a screen that is working.
+   */
   useEffect(() => {
     if (tab !== "ingredients") return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
 
     const timeout = window.setTimeout(() => {
       void searchIngredients(query)
-        .then(setIngredients)
-        .catch((reason: unknown) =>
-          setError(presentError(reason, "Could not load foods.")),
-        )
-        .finally(() => setLoading(false));
+        .then((rows) => {
+          if (!cancelled) setIngredients(rows);
+        })
+        .catch((reason: unknown) => {
+          if (!cancelled) setError(presentError(reason, "Could not load foods."));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }, 260);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
   }, [query, tab]);
 
-  // Recipes are one bounded fetch, then filtered in memory.
+  // Recipes are one bounded fetch, then filtered in memory. Same guard: a fast
+  // tab switch away and back must not leave the first response setting state
+  // for a screen the user is no longer looking at.
   useEffect(() => {
     if (tab !== "recipes" || recipes.length > 0) return;
+    let cancelled = false;
     setLoading(true);
+
     void loadRecipes()
-      .then(setRecipes)
-      .catch((reason: unknown) =>
-        setError(presentError(reason, "Could not load recipes.")),
-      )
-      .finally(() => setLoading(false));
+      .then((rows) => {
+        if (!cancelled) setRecipes(rows);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(presentError(reason, "Could not load recipes."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [tab, recipes.length]);
 
   useEffect(() => {
     if (tab !== "mine") return;
+    let cancelled = false;
     setLoading(true);
+
     void loadRecentFoods()
-      .then(setRecents)
-      .catch((reason: unknown) =>
-        setError(presentError(reason, "Could not load your foods.")),
-      )
-      .finally(() => setLoading(false));
+      .then((rows) => {
+        if (!cancelled) setRecents(rows);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(presentError(reason, "Could not load your foods."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [tab]);
 
   useEffect(() => {

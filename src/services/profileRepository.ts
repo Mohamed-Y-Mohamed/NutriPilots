@@ -18,6 +18,15 @@ export const DEFAULT_PROFILE: UserProfile = {
   goalMode: "maintain",
   theme: "system",
   onboarded: false,
+  // Null rather than zero throughout: "no step count recorded" and "walks no
+  // steps" are different facts, and the calculator treats them differently.
+  stepsPerDay: null,
+  resistanceSessions: null,
+  cardioSessions: null,
+  bodyFatPercent: null,
+  waistCm: null,
+  trainingExperience: null,
+  onMedication: false,
   targetOverride: null,
   targetsSource: null,
   targetsSetAt: null,
@@ -27,9 +36,13 @@ export const DEFAULT_PROFILE: UserProfile = {
 // list at the type level to work out the shape of `data`, and a `+` leaves it
 // with no literal to read.
 const FIELDS =
+  "display_name,age,calculation_sex,height_cm,weight_kg,target_weight_kg,activity_level,goal_mode,theme,onboarded,target_calories,target_protein_g,target_carbs_g,target_fat_g,target_fibre_g,targets_source,targets_set_at,steps_per_day,resistance_sessions,cardio_sessions,body_fat_percent,waist_cm,training_experience,on_medication";
+
+/** Without the body-composition columns, for a database that predates them. */
+const FIELDS_WITHOUT_BODY_COMP =
   "display_name,age,calculation_sex,height_cm,weight_kg,target_weight_kg,activity_level,goal_mode,theme,onboarded,target_calories,target_protein_g,target_carbs_g,target_fat_g,target_fibre_g,targets_source,targets_set_at";
 
-/** The same list without the target columns, for a database that predates them. */
+/** The same list without the target columns either, for an older one still. */
 const FIELDS_WITHOUT_TARGETS =
   "display_name,age,calculation_sex,height_cm,weight_kg,target_weight_kg,activity_level,goal_mode,theme,onboarded";
 
@@ -49,25 +62,37 @@ export async function loadProfile(): Promise<UserProfile | null> {
   const client = requireSupabase();
 
   const full = await client.from("user_profiles").select(FIELDS).maybeSingle();
+  if (!full.error) return full.data ? toProfile(full.data) : null;
+  if (full.error.code !== UNDEFINED_COLUMN) throw new Error(full.error.message);
 
-  if (full.error?.code === UNDEFINED_COLUMN) {
-    // Names a migration and a set of columns, so it stays out of a shipped
-    // console — a production console is somewhere users and their extensions
-    // can read, and a build strips this branch entirely.
-    if (import.meta.env.DEV) {
-      console.warn(
-        "[profile] the target columns are missing from this database — run the " +
-          "target_overrides migration. Custom daily targets are unavailable until then.",
-      );
-    }
-
-    const basic = await client.from("user_profiles").select(FIELDS_WITHOUT_TARGETS).maybeSingle();
-    if (basic.error) throw new Error(basic.error.message);
-    return basic.data ? toProfile(basic.data) : null;
+  // Names a migration and a set of columns, so it stays out of a shipped
+  // console — a production console is somewhere users and their extensions
+  // can read, and a build strips these branches entirely.
+  if (import.meta.env.DEV) {
+    console.warn(
+      "[profile] the body-composition columns are missing from this database — run the " +
+        "body_composition_engine migration. Steps, training and the medication flag are " +
+        "unavailable until then, and targets fall back to the activity-level estimate.",
+    );
   }
 
-  if (full.error) throw new Error(full.error.message);
-  return full.data ? toProfile(full.data) : null;
+  const withTargets = await client
+    .from("user_profiles")
+    .select(FIELDS_WITHOUT_BODY_COMP)
+    .maybeSingle();
+  if (!withTargets.error) return withTargets.data ? toProfile(withTargets.data) : null;
+  if (withTargets.error.code !== UNDEFINED_COLUMN) throw new Error(withTargets.error.message);
+
+  if (import.meta.env.DEV) {
+    console.warn(
+      "[profile] the target columns are missing too — run the target_overrides migration. " +
+        "Custom daily targets are unavailable until then.",
+    );
+  }
+
+  const basic = await client.from("user_profiles").select(FIELDS_WITHOUT_TARGETS).maybeSingle();
+  if (basic.error) throw new Error(basic.error.message);
+  return basic.data ? toProfile(basic.data) : null;
 }
 
 /** Reads whichever columns came back, defaulting anything absent. */
@@ -83,6 +108,13 @@ function toProfile(row: Record<string, unknown>): UserProfile {
     goalMode: (row.goal_mode ?? DEFAULT_PROFILE.goalMode) as UserProfile["goalMode"],
     theme: (row.theme ?? "system") as UserProfile["theme"],
     onboarded: Boolean(row.onboarded),
+    stepsPerDay: optionalNumber(row.steps_per_day),
+    resistanceSessions: optionalNumber(row.resistance_sessions),
+    cardioSessions: optionalNumber(row.cardio_sessions),
+    bodyFatPercent: optionalNumber(row.body_fat_percent),
+    waistCm: optionalNumber(row.waist_cm),
+    trainingExperience: (row.training_experience ?? null) as UserProfile["trainingExperience"],
+    onMedication: Boolean(row.on_medication),
     // All five have to be present to mean anything. A half-written override —
     // or a database that has none of the columns — is treated as no override at
     // all rather than as a plan with holes in it.
@@ -90,6 +122,20 @@ function toProfile(row: Record<string, unknown>): UserProfile {
     targetsSource: (row.targets_source ?? null) as TargetsSource | null,
     targetsSetAt: (row.targets_set_at ?? null) as string | null,
   };
+}
+
+/**
+ * A number the user may simply not have given.
+ *
+ * Zero is a real answer to "how many steps" and null is not, so they must not
+ * collapse into each other: the calculator falls back to the self-reported
+ * activity band on null and would otherwise read a missing value as a person
+ * who never moves.
+ */
+function optionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function readTargets(row: Record<string, unknown>): DailyTargets | null {
@@ -126,6 +172,20 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
     onboarded: profile.onboarded,
   };
 
+  /**
+   * Written separately from `body` so that a database without these columns can
+   * still save the rest, the same bargain the target columns already strike.
+   */
+  const bodyComposition = {
+    steps_per_day: profile.stepsPerDay,
+    resistance_sessions: profile.resistanceSessions,
+    cardio_sessions: profile.cardioSessions,
+    body_fat_percent: profile.bodyFatPercent,
+    waist_cm: profile.waistCm,
+    training_experience: profile.trainingExperience,
+    on_medication: profile.onMedication,
+  };
+
   const targets = {
     target_calories: profile.targetOverride?.calories ?? null,
     target_protein_g: profile.targetOverride?.protein ?? null,
@@ -141,10 +201,21 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
   const client = requireSupabase();
   const { error } = await client
     .from("user_profiles")
-    .upsert({ ...body, ...targets }, { onConflict: "user_id" });
+    .upsert({ ...body, ...bodyComposition, ...targets }, { onConflict: "user_id" });
 
   if (!error) return;
   if (error.code !== UNDEFINED_COLUMN) throw new Error(error.message);
+
+  // Steps, training and the medication flag refine a target rather than being
+  // one, so a database that lacks the columns can still save everything else
+  // and simply calculate from the activity band instead.
+  const withoutBodyComp = await client
+    .from("user_profiles")
+    .upsert({ ...body, ...targets }, { onConflict: "user_id" });
+  if (!withoutBodyComp.error) return;
+  if (withoutBodyComp.error.code !== UNDEFINED_COLUMN) {
+    throw new Error(withoutBodyComp.error.message);
+  }
 
   // Same reasoning as loadProfile: a database that predates the target columns
   // must not stop someone saving their height and weight. Setting an override
@@ -186,27 +257,48 @@ export async function resetHealthData(userId: string, theme: UserProfile["theme"
     onboarded: false,
   };
 
+  const clearedTargets = {
+    target_calories: null,
+    target_protein_g: null,
+    target_carbs_g: null,
+    target_fat_g: null,
+    target_fibre_g: null,
+    targets_source: null,
+    targets_set_at: null,
+  };
+
+  // Body measurements are health data and go with the rest of it. The
+  // medication flag resets to false rather than null: it is a yes/no answer
+  // and "not answered" is the same as "no" for everything that reads it.
+  const clearedBodyComp = {
+    steps_per_day: null,
+    resistance_sessions: null,
+    cardio_sessions: null,
+    body_fat_percent: null,
+    waist_cm: null,
+    training_experience: null,
+    on_medication: false,
+  };
+
   const client = requireSupabase();
-  const { error } = await client.from("user_profiles").upsert(
-    {
-      ...cleared,
-      target_calories: null,
-      target_protein_g: null,
-      target_carbs_g: null,
-      target_fat_g: null,
-      target_fibre_g: null,
-      targets_source: null,
-      targets_set_at: null,
-    },
-    { onConflict: "user_id" },
-  );
+  const { error } = await client
+    .from("user_profiles")
+    .upsert({ ...cleared, ...clearedBodyComp, ...clearedTargets }, { onConflict: "user_id" });
 
   if (!error) return;
   if (error.code !== UNDEFINED_COLUMN) throw new Error(error.message);
 
   // Columns that do not exist hold nothing to erase, so a database without
   // them is already in the state this is trying to reach. "Delete my data"
-  // must never be the thing that fails.
+  // must never be the thing that fails, so each step back is tried in turn.
+  const withoutBodyComp = await client
+    .from("user_profiles")
+    .upsert({ ...cleared, ...clearedTargets }, { onConflict: "user_id" });
+  if (!withoutBodyComp.error) return;
+  if (withoutBodyComp.error.code !== UNDEFINED_COLUMN) {
+    throw new Error(withoutBodyComp.error.message);
+  }
+
   const retry = await client.from("user_profiles").upsert(cleared, { onConflict: "user_id" });
   if (retry.error) throw new Error(retry.error.message);
 }

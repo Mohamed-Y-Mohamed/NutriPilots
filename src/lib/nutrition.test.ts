@@ -20,6 +20,13 @@ const profile: UserProfile = {
   goalMode: "maintain",
   theme: "system",
   onboarded: true,
+  stepsPerDay: null,
+  resistanceSessions: null,
+  cardioSessions: null,
+  bodyFatPercent: null,
+  waistCm: null,
+  trainingExperience: null,
+  onMedication: false,
   targetOverride: null,
   targetsSource: null,
   targetsSetAt: null,
@@ -63,14 +70,38 @@ const recipe = {
 
 describe("calculateDailyTargets", () => {
   it("applies Mifflin–St Jeor with the activity multiplier", () => {
-    // BMR 1780 × 1.55 = 2759, maintain adds nothing.
-    expect(calculateDailyTargets(profile).calories).toBe(2759);
+    // BMR 1780 × 1.5 (self-reported "moderate") = 2670, maintain adds nothing.
+    expect(calculateDailyTargets(profile).calories).toBe(2670);
   });
 
-  it("subtracts the deficit for a weight-loss goal", () => {
+  it("takes a percentage off for a weight-loss goal, not a flat figure", () => {
     const maintain = calculateDailyTargets(profile).calories;
     const losing = calculateDailyTargets({ ...profile, goalMode: "lose" }).calories;
-    expect(maintain - losing).toBe(300);
+
+    // "Lose steadily" is the middle of the published 10–20% band.
+    expect((maintain - losing) / maintain).toBeCloseTo(0.15, 2);
+  });
+
+  /**
+   * The bug this whole engine exists to fix. A flat 500 kcal cut is a third of
+   * a small woman's maintenance and an eighth of a large man's, so the same
+   * setting used to describe two entirely different diets. A percentage means
+   * "lose faster" means one thing to everybody.
+   */
+  it("gives the same proportional deficit whatever the body size", () => {
+    const small = { ...profile, weightKg: 55, heightCm: 160, calculationSex: "female" as const };
+    const large = { ...profile, weightKg: 166, heightCm: 181 };
+
+    const share = (person: typeof profile) => {
+      const maintain = calculateDailyTargets({ ...person, goalMode: "maintain" }).calories;
+      const cutting = calculateDailyTargets({ ...person, goalMode: "lose-fast" }).calories;
+      return (maintain - cutting) / maintain;
+    };
+
+    expect(share(small)).toBeCloseTo(share(large), 2);
+    // And it lands inside the 20–25% band that "faster" is defined as.
+    expect(share(large)).toBeGreaterThan(0.2);
+    expect(share(large)).toBeLessThan(0.25);
   });
 
   it("never drops a woman below 1200 kcal", () => {

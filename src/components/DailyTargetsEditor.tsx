@@ -183,6 +183,19 @@ export function DailyTargetsEditor() {
 
         <p className="mt-4 text-[12px] leading-relaxed text-ink-muted">{provenance()}</p>
 
+        {/*
+          Stated on the screen where the numbers live rather than buried in a
+          settings page. Every figure this app produces is an estimate from an
+          equation, and the person reading it is the one who knows their own
+          body, their clinician's advice and what they can actually stick to.
+        */}
+        <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+          These are recommendations, not instructions. They come from an equation and your own
+          logged results — not from anyone who has met you. Change any of them to whatever you and
+          your doctor, dietitian or coach decide is right, and the app will measure you against
+          that instead.
+        </p>
+
         {saved && (
           <Alert tone="success" className="mt-3">
             Targets updated. Today&rsquo;s ring and macro bars now use them.

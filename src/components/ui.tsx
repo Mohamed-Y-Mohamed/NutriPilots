@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type ImgHTMLAttributes,
   type PropsWithChildren,
   type ReactNode,
@@ -54,7 +55,12 @@ export function buttonClass(
 ): string {
   return cx(
     "inline-flex items-center justify-center gap-2 rounded-xl font-medium",
-    "transition-colors active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100",
+    // `transition-colors` never covered the transform, so the press scale
+    // snapped between two states rather than easing — the difference between a
+    // button that feels connected to your thumb and one that feels broken.
+    // 150ms is about the ceiling before acknowledgement starts reading as lag.
+    "transition duration-150 ease-out active:scale-[0.98]",
+    "disabled:opacity-40 disabled:active:scale-100",
     VARIANTS[variant],
     SIZES[size],
     full && "w-full",
@@ -131,10 +137,18 @@ export function PageHeader({
 export function Card({
   children,
   className,
+  style,
   as: Tag = "section",
-}: PropsWithChildren<{ className?: string; as?: "section" | "div" | "article" }>) {
+}: PropsWithChildren<{
+  className?: string;
+  /** Carries the stagger index (--np-i) where a group of cards animates in. */
+  style?: CSSProperties;
+  as?: "section" | "div" | "article";
+}>) {
   return (
-    <Tag className={cx("rounded-2xl border border-line bg-surface", className)}>{children}</Tag>
+    <Tag style={style} className={cx("rounded-2xl border border-line bg-surface", className)}>
+      {children}
+    </Tag>
   );
 }
 

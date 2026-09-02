@@ -188,6 +188,58 @@ function classify(reason: unknown): string | null {
   return null;
 }
 
+/**
+ * Whether a failure is worth trying again, or is a settled answer.
+ *
+ * The distinction is the whole safety of retrying. A dropped connection or a
+ * server briefly falling over will very likely succeed on the next attempt. A
+ * rejected token, a row RLS forbids, or a constraint violation will fail
+ * identically every time — retrying those just makes the user wait longer for
+ * the same answer, and hammers a server that already said no.
+ *
+ * Written to under-match: a transient failure wrongly classed as permanent
+ * costs one retry the user could have had, while the reverse costs a stack of
+ * pointless requests and a much slower error.
+ */
+export function isTransient(reason: unknown): boolean {
+  // The device knowing it is offline is the clearest signal there is, and the
+  // commonest reason any of this fails.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+
+  const text = rawText(reason).toLowerCase();
+  if (!text) return false;
+
+  // Anything the server settled deliberately. Checked first so a message that
+  // happens to mention both never gets retried.
+  if (
+    text.includes("jwt") ||
+    text.includes("token") ||
+    text.includes("not authenticated") ||
+    text.includes("permission denied") ||
+    text.includes("row-level security") ||
+    text.includes("violates") ||
+    text.includes("duplicate key") ||
+    text.includes("already exists")
+  ) {
+    return false;
+  }
+
+  return (
+    text.includes("failed to fetch") ||
+    text.includes("networkerror") ||
+    text.includes("network request failed") ||
+    text.includes("load failed") ||
+    text.includes("fetch failed") ||
+    text.includes("timeout") ||
+    text.includes("timed out") ||
+    text.includes("econnreset") ||
+    // 502/503/504 from a gateway or a function cold-starting.
+    text.includes("bad gateway") ||
+    text.includes("service unavailable") ||
+    text.includes("gateway timeout")
+  );
+}
+
 function rawText(reason: unknown): string {
   if (reason instanceof Error) return `${reason.name}: ${reason.message}`;
   if (typeof reason === "string") return reason;

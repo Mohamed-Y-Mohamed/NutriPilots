@@ -141,3 +141,37 @@ describe("running out for the day", () => {
     expect(sendChatMessage).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The function truncates at 1000 characters, and used to do it silently: a long
+ * paste was accepted whole, sent whole, and answered from a version of itself
+ * whose ending the user never saw — while spending one of their few messages.
+ */
+describe("the message length limit", () => {
+  it("keeps the characters it can send and refuses the rest as they arrive", async () => {
+    const user = userEvent.setup();
+    render(<CoachPage />);
+
+    const box = screen.getByPlaceholderText(/ask about food/i) as HTMLInputElement;
+    await user.click(box);
+    await user.paste("x".repeat(1200));
+
+    expect(box.value).toHaveLength(1000);
+  });
+
+  it("counts the last stretch down and stays quiet before it", async () => {
+    const user = userEvent.setup();
+    render(<CoachPage />);
+
+    const box = screen.getByPlaceholderText(/ask about food/i);
+    await user.click(box);
+
+    // Well clear of the limit, where a counter would be numbering a sentence.
+    await user.paste("x".repeat(600));
+    expect(screen.queryByText("400")).not.toBeInTheDocument();
+
+    // Inside the last fifth, where how much is left is worth knowing.
+    await user.paste("x".repeat(300));
+    expect(screen.getByText("100")).toBeInTheDocument();
+  });
+});

@@ -36,6 +36,13 @@ export function AppShell() {
     window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   }, [location.pathname]);
 
+  /**
+   * Which tab the indicator sits under, or -1 when the user is somewhere the
+   * tab bar does not describe — Goals and Settings live in the header, and an
+   * indicator parked under an unrelated tab would be actively misleading.
+   */
+  const activeIndex = NAVIGATION.findIndex(({ to }) => location.pathname.startsWith(to));
+
   return (
     <div className="min-h-svh">
       <a
@@ -64,7 +71,15 @@ export function AppShell() {
         className="pt-header pb-tabbar outline-none"
       >
         <PullToRefresh onRefresh={refresh}>
-          <Outlet />
+          {/*
+            Keyed on the path so the entrance replays on every navigation.
+            Entrance animations only run on mount, and without a changing key
+            React reuses this subtree between routes — which is why the app
+            animated on first load and then never again.
+          */}
+          <div key={location.pathname} className="animate-route">
+            <Outlet />
+          </div>
         </PullToRefresh>
       </main>
 
@@ -72,33 +87,58 @@ export function AppShell() {
         aria-label="Main"
         className="h-tabbar pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/85 backdrop-blur-md"
       >
-        <div className="mx-auto grid h-17 max-w-md grid-cols-4 px-1 pt-1.5">
+        <div className="relative mx-auto grid h-17 max-w-md grid-cols-4 px-1 pt-1.5">
+          {/*
+            One indicator that travels, rather than four that grow and shrink.
+
+            The old version faded a separate bar in under each tab, so nothing
+            connected the place you left to the place you arrived — which is
+            the one thing the indicator exists to say. A single pill sliding
+            the distance makes the movement legible.
+
+            Only `transform` and `opacity` animate, so it never touches layout,
+            and it is quick: the tab bar is used dozens of times a day and
+            anything slower than about a quarter of a second turns navigation
+            into waiting.
+          */}
+          <span
+            aria-hidden="true"
+            className={cx(
+              "pointer-events-none absolute inset-y-1.5 left-0 w-1/4 px-2",
+              "transition-[transform,opacity] duration-[260ms] ease-out",
+              // Hidden on Goals and Settings, which the bar does not describe —
+              // an indicator parked under an unrelated tab is worse than none.
+              activeIndex < 0 && "opacity-0",
+            )}
+            style={{ transform: `translateX(${Math.max(activeIndex, 0) * 100}%)` }}
+          >
+            <span className="block size-full rounded-2xl bg-brand-soft" />
+          </span>
+
           {NAVIGATION.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 cx(
-                  "group relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium",
-                  "transition-colors duration-200",
+                  "group relative z-10 flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium",
+                  "transition-colors duration-200 ease-out",
                   isActive ? "text-brand" : "text-ink-faint hover:text-ink-muted",
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <span
-                    aria-hidden="true"
-                    className={cx(
-                      "absolute top-0 h-0.5 rounded-full bg-brand transition-all duration-300",
-                      isActive ? "w-8 opacity-100" : "w-0 opacity-0",
-                    )}
-                  />
                   <Icon
                     size={20}
-                    strokeWidth={isActive ? 2.2 : 1.9}
+                    strokeWidth={isActive ? 2.3 : 1.9}
                     aria-hidden="true"
-                    className="transition-transform duration-200 group-active:scale-90"
+                    // The lift is what makes the icon feel picked up by the
+                    // indicator arriving under it rather than just recoloured.
+                    className={cx(
+                      "transition-transform duration-[260ms] ease-out group-active:scale-90",
+                      isActive && "-translate-y-0.5 scale-110",
+                    )}
                   />
                   <span className="truncate">{label}</span>
                 </>

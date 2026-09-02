@@ -27,14 +27,18 @@ describe("effectiveTargets", () => {
   it("uses the formula when nothing has overridden it", () => {
     // Mifflin–St Jeor for a 30-year-old man, 180cm, 82kg:
     //   10(82) + 6.25(180) - 5(30) + 5 = 1800 BMR
-    //   x 1.55 moderate = 2790, - 300 to lose = 2490
-    // then the "lose" split: 30% protein, 40% carbs, 30% fat.
+    //   x 1.5 (self-reported "moderate", no step count) = 2700 maintenance
+    //   - 15%, the middle of the 10–20% "lose steadily" band = 2295
+    // Protein is then 1.6–2.2 g per kg of an 82kg reference weight, fat clears
+    // both of its floors, and carbohydrate takes what is left. Grams per kg
+    // first and percentages never: a deficit must not quietly cut the protein
+    // it makes more important.
     expect(effectiveTargets(PROFILE)).toEqual({
-      calories: 2490,
-      protein: Math.round((2490 * 0.3) / 4),
-      carbs: Math.round((2490 * 0.4) / 4),
-      fat: Math.round((2490 * 0.3) / 9),
-      fibre: Math.max(25, Math.round((2490 / 1000) * 14)),
+      calories: 2295,
+      protein: 156,
+      carbs: 242,
+      fat: 78,
+      fibre: 32,
     });
   });
 

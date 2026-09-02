@@ -47,13 +47,27 @@ export function RecipeDetailPage() {
 
   useEffect(() => {
     if (!recipeId) return;
+    let cancelled = false;
+
     setLoading(true);
+    // Cleared on every run: a failure from the recipe the user was looking at
+    // a moment ago must not sit on top of the one they opened next.
+    setError(null);
+
     void getRecipe(recipeId, owned)
-      .then(setRecipe)
-      .catch((reason: unknown) =>
-        setError(presentError(reason, "Could not load this recipe.")),
-      )
-      .finally(() => setLoading(false));
+      .then((found) => {
+        if (!cancelled) setRecipe(found);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(presentError(reason, "Could not load this recipe."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [recipeId, owned]);
 
   if (loading) {

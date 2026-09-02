@@ -4,7 +4,7 @@ import {
   ChevronRight,
   Target,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Alert,
@@ -18,7 +18,9 @@ import {
 import { CoachBanner } from "../components/CoachBanner";
 import { IntakeTrends } from "../components/IntakeTrends";
 import { TodayFood } from "../components/TodayFood";
+import { WeighInCard } from "../components/WeighInCard";
 import { addDays, formatDayLabel, localDateKey } from "../lib/dates";
+import { useCountUp } from "../lib/useCountUp";
 import { useAppData } from "../state/AppDataContext";
 
 
@@ -94,7 +96,10 @@ export function DashboardPage() {
         <TodayFood onAddTo={(meal) => navigate(`/diary?meal=${meal}`)} />
 
         <div className="grid gap-4 md:grid-cols-2">
-        <Card className="min-w-0 p-5 sm:p-6">
+        {/* The four cards arrive in reading order rather than all at once.
+            55ms apart is enough to register as a sequence without the last one
+            feeling late — the whole run finishes inside a third of a second. */}
+        <Card className="animate-stagger min-w-0 p-5 sm:p-6" style={{ "--np-i": 0 } as CSSProperties}>
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="text-sm font-medium text-ink-muted">
               {isOver ? "Over your target" : "Energy left"}
@@ -113,7 +118,7 @@ export function DashboardPage() {
           </div>
         </Card>
 
-        <Card className="min-w-0 p-5 sm:p-6">
+        <Card className="animate-stagger min-w-0 p-5 sm:p-6" style={{ "--np-i": 1 } as CSSProperties}>
           <h2 className="text-sm font-medium text-ink-muted">Macros</h2>
           <div className="mt-5 grid gap-4">
             <MacroBar label="Protein" value={totals.protein} target={targets.protein} colour="var(--color-macro-protein)" />
@@ -123,6 +128,8 @@ export function DashboardPage() {
           </div>
         </Card>
         </div>
+
+        <WeighInCard />
 
         <IntakeTrends target={targets.calories} today={today} />
       </div>
@@ -157,22 +164,30 @@ function CalorieRing({
   isOver: boolean;
   remaining: number;
 }) {
+  // The ring sweeping and the number travelling are one gesture, so they run
+  // for the same length of time. Reading them as two events is what made the
+  // old version feel like a repaint rather than a response.
+  const shown = useCountUp(Math.abs(remaining));
+
   return (
     <div
       role="img"
       aria-label={`${Math.round(percent)} percent of your calorie target logged`}
       className="relative grid size-32 shrink-0 place-items-center rounded-full sm:size-36"
       style={{
+        // The angle goes through the registered --np-ring property so it can be
+        // transitioned; see styles.css. Colour is transitioned separately
+        // because going over target should register as a change of state.
+        "--np-ring": `${percent * 3.6}deg`,
         background: `conic-gradient(${
           isOver ? "var(--color-danger)" : "var(--color-brand)"
-        } ${percent * 3.6}deg, var(--color-muted) 0)`,
-      }}
+        } var(--np-ring), var(--color-muted) 0)`,
+        transition: "--np-ring 520ms var(--ease-out), background-color 240ms ease",
+      } as CSSProperties}
     >
       <div className="absolute inset-2.5 rounded-full bg-surface" />
       <div className="relative grid justify-items-center">
-        <strong className="text-2xl font-semibold tabular-nums">
-          {Math.abs(Math.round(remaining))}
-        </strong>
+        <strong className="text-2xl font-semibold tabular-nums">{Math.round(shown)}</strong>
         <span className="text-[11px] text-ink-muted">{isOver ? "kcal over" : "kcal left"}</span>
       </div>
     </div>

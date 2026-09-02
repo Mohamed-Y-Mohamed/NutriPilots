@@ -1,5 +1,4 @@
 import {
-  Bot,
   Database,
   FileText,
   Info,
@@ -222,39 +221,40 @@ export function SettingsPage() {
           />
         </CollapsibleCard>
 
+        {/* "How the coach works" used to sit here. It has moved onto the Coach
+            screen itself, behind a "How it works" button — the thing people
+            most needed from it was how to get a meal into the diary, and that
+            was three taps away from where they needed to know it. */}
+
         <CollapsibleCard
-          icon={<Bot size={17} />}
-          title="How the coach works"
-          description="What happens to your messages and photos."
+          icon={<Info size={17} />}
+          title="About"
+          description="What NutriPilot is for, and which version you are running."
         >
           <p className="text-[13px] leading-relaxed text-ink-muted">
-            Photos are uploaded only for the moment it takes to analyse them and are deleted
-            immediately afterwards. A short text description is kept for 30 days so you can look
-            back at what you logged, then removed automatically. Your API access is handled
-            entirely on the server &mdash; no keys ever reach this device.
+            NutriPilot exists to put the best nutrition guidance we can manage in your pocket,
+            without the cost that normally comes with it. Good dietary advice has always been
+            something you had to pay a professional for &mdash; the aim here is to give you
+            genuinely useful, evidence-informed numbers for free, and be honest about the fact
+            that they are estimates you are free to change.
           </p>
+
+          {/* The app's own build only, and only because it is what support
+              would ask for. Which build of the server answered, and what it
+              runs on, are ours to know. */}
+          <dl className="mt-4 grid gap-2 text-[13px]">
+            <div className="flex justify-between gap-3">
+              <dt className="text-ink-muted">App version</dt>
+              <dd className="font-medium tabular-nums">{__BUILD_ID__}</dd>
+            </div>
+          </dl>
+
           <button
             onClick={() => setShowTerms(true)}
             className="mt-3 inline-flex min-h-9 items-center gap-2 text-[13px] font-medium text-brand"
           >
             <FileText size={15} /> Read the Terms of Use &amp; Privacy
           </button>
-        </CollapsibleCard>
-
-        <CollapsibleCard
-          icon={<Info size={17} />}
-          title="About"
-          description="Which version of the app you are running."
-        >
-          {/* The app's own build only, and only because it is what support
-              would ask for. Which build of the server answered, and what it
-              runs on, are ours to know. */}
-          <dl className="grid gap-2 text-[13px]">
-            <div className="flex justify-between gap-3">
-              <dt className="text-ink-muted">App version</dt>
-              <dd className="font-medium tabular-nums">{__BUILD_ID__}</dd>
-            </div>
-          </dl>
         </CollapsibleCard>
 
         <CollapsibleCard

@@ -42,6 +42,25 @@ export default tseslint.config(
     },
   },
 
+  /**
+   * The marketing capture scripts run on Node, but hand callbacks to
+   * page.evaluate and addInitScript that are serialised and executed inside the
+   * browser — so `document`, `getComputedStyle` and `requestAnimationFrame` are
+   * legitimately in scope there, in the same file.
+   */
+  {
+    files: ["scripts/*marketing*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      // Omitting keys by rest-destructuring is the clearest way to strip
+      // provenance columns off a row before it is written as a fixture.
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true }],
+    },
+  },
+
   // Edge Functions run on Deno, which supplies its own globals.
   {
     files: ["supabase/functions/**/*.ts"],

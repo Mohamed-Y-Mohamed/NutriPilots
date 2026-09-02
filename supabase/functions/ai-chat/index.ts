@@ -38,7 +38,12 @@ const HISTORY_LIMIT = 12;
  * is the line. Mirrored in src/lib/targetRanges.ts and by a CHECK constraint.
  */
 const ABSOLUTE_FLOOR_CALORIES = 1000;
-const MAX_MESSAGE_CHARS = 2000;
+/**
+ * The longest message the coach will read. Mirrored in the composer as a
+ * `maxLength`, so the limit is visible while typing rather than discovered
+ * afterwards — this end still truncates, because a client is not a guarantee.
+ */
+const MAX_MESSAGE_CHARS = 1000;
 const SIGNED_URL_SECONDS = 300;
 
 interface PhotoEstimate {
@@ -423,6 +428,13 @@ function assistantIdOf(rows: Array<{ id: string; role: string }> | null): string
  * eat?" never causes it to be read out of the database at all, let alone sent
  * to a third-party model.
  */
+/** `back` days before `dateKey`, as another YYYY-MM-DD key. */
+function shiftDate(dateKey: string, back: number): string {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - back);
+  return date.toISOString().slice(0, 10);
+}
+
 async function buildContext(
   client: ReturnType<typeof userClient>,
   userId: string,
@@ -431,13 +443,13 @@ async function buildContext(
 ): Promise<string> {
   const wantsHistory = needsIntakeHistory(message);
 
-  const [profileResult, diaryResult, intakeHistory] = await Promise.all([
+  const [profileResult, diaryResult, intakeHistory, weightResult] = await Promise.all([
     client
       .from("user_profiles")
       // One literal, not a concatenation: supabase-js reads the column list at
       // the type level and a `+` leaves it nothing to read.
       .select(
-        "age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode, onboarded, target_calories, target_protein_g, target_carbs_g, target_fat_g, target_fibre_g, targets_source",
+        "age, calculation_sex, height_cm, weight_kg, target_weight_kg, activity_level, goal_mode, onboarded, target_calories, target_protein_g, target_carbs_g, target_fat_g, target_fibre_g, targets_source, steps_per_day, resistance_sessions, cardio_sessions, body_fat_percent, waist_cm, training_experience, on_medication",
       )
       .eq("user_id", userId)
       .maybeSingle(),
@@ -449,6 +461,15 @@ async function buildContext(
     wantsHistory
       ? loadIntakeHistory(client, userId, today)
       : Promise.resolve<IntakeEntry[]>([]),
+    // Weigh-ins come along regardless of the history gate: "am I losing weight"
+    // is the one question that cannot be answered without them, and two
+    // averages is a handful of rows rather than a month of someone's eating.
+    client
+      .from("weight_logs")
+      .select("date, weight_kg")
+      .eq("user_id", userId)
+      .gte("date", shiftDate(today, 27))
+      .order("date", { ascending: false }),
   ]);
 
   const profile = profileResult.data;
@@ -475,6 +496,38 @@ async function buildContext(
     if (profile.activity_level) lines.push(`- Activity level: ${profile.activity_level}`);
     if (profile.goal_mode) lines.push(`- Goal: ${profile.goal_mode}`);
 
+    // Steps are the one input that stops an activity level being talked up, so
+    // their absence is worth stating rather than passing over in silence.
+    if (profile.steps_per_day) {
+      lines.push(`- Averages ${Math.round(Number(profile.steps_per_day))} steps a day`);
+    } else {
+      lines.push(
+        "- No step count given, so the activity estimate rests on their own description and " +
+          "may well be generous. Say so if the answer turns on it.",
+      );
+    }
+
+    const resistance = Number(profile.resistance_sessions ?? 0);
+    const cardio = Number(profile.cardio_sessions ?? 0);
+    if (resistance || cardio) {
+      lines.push(`- Trains ${resistance} weights and ${cardio} cardio sessions a week`);
+    }
+    if (profile.training_experience) {
+      lines.push(`- Training experience: ${profile.training_experience}`);
+    }
+    if (profile.body_fat_percent) {
+      lines.push(`- Body fat around ${profile.body_fat_percent}% (their own estimate, not measured)`);
+    }
+    if (profile.waist_cm) lines.push(`- Waist ${profile.waist_cm} cm`);
+
+    if (profile.on_medication) {
+      lines.push(
+        "- ON MEDICATION that may affect appetite, weight or energy use. The app's figures do " +
+          "not model that. Where it is relevant to the answer, say so plainly once and point " +
+          "them at their prescriber. Never suggest changing or stopping anything.",
+      );
+    }
+
     if (profile.target_calories) {
       lines.push(
         `- Current daily targets: ${Math.round(Number(profile.target_calories))} kcal, ` +
@@ -498,6 +551,50 @@ async function buildContext(
     }
   } else {
     lines.push("- No profile saved yet. Suggest setting goals if it would help.");
+  }
+
+  /**
+   * Two seven-day averages, which is the only honest way to read a scale.
+   *
+   * Deliberately given as averages rather than as a list of weigh-ins: handing
+   * a model the raw numbers invites it to compare the newest against the oldest
+   * and call a salty dinner a result.
+   */
+  const weighIns = new Map<string, number>(
+    (weightResult.data ?? []).map((row) => [String(row.date), Number(row.weight_kg)]),
+  );
+  const average = (offset: number): number | null => {
+    const values: number[] = [];
+    for (let back = offset; back < offset + 7; back += 1) {
+      const weight = weighIns.get(shiftDate(today, back));
+      if (weight !== undefined) values.push(weight);
+    }
+    if (values.length < 3) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  };
+
+  const thisWeek = average(0);
+  const lastWeek = average(7);
+
+  if (thisWeek !== null && lastWeek !== null) {
+    const change = thisWeek - lastWeek;
+    const percent = (change / lastWeek) * 100;
+    lines.push(
+      `- Weight trend: 7-day average ${thisWeek.toFixed(1)} kg, against ` +
+        `${lastWeek.toFixed(1)} kg the week before — ${change >= 0 ? "up" : "down"} ` +
+        `${Math.abs(change).toFixed(2)} kg (${Math.abs(percent).toFixed(2)}% of body weight). ` +
+        "Reason from this rather than from any single weigh-in.",
+    );
+  } else if (weighIns.size > 0) {
+    lines.push(
+      `- Only ${weighIns.size} weigh-in(s) in the last four weeks — not enough for a trend. ` +
+        "Encourage daily morning weigh-ins if the question depends on one.",
+    );
+  } else {
+    lines.push(
+      "- No weigh-ins recorded, so there is no trend to reason from and no way to check the " +
+        "app's own estimate against reality. Suggest logging weight if the question needs it.",
+    );
   }
 
   lines.push(
