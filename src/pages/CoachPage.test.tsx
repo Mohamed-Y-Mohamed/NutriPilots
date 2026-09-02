@@ -62,7 +62,7 @@ const allowance = (callType: string, used: number, dailyLimit: number) => ({
 const tooFast = (retryAfter: number) =>
   new FunctionError(`That is a lot at once — give it ${retryAfter} seconds and try again.`, {
     code: "rate_limit",
-    usage: { ...allowance("chat", 2, 35), retryAfter },
+    usage: { ...allowance("chat", 2, 20), retryAfter },
   });
 
 async function ask(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -74,7 +74,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   loadChatHistory.mockResolvedValue([]);
   getAiUsage.mockImplementation((callType: string) =>
-    Promise.resolve(allowance(callType, 0, callType === "vision" ? 8 : 35)),
+    Promise.resolve(allowance(callType, 0, callType === "vision" ? 8 : 20)),
   );
 });
 
@@ -125,14 +125,14 @@ describe("running out for the day", () => {
   it("stands the composer down before the user spends a call finding out", async () => {
     getAiUsage.mockImplementation((callType: string) =>
       Promise.resolve(
-        callType === "chat" ? allowance("chat", 35, 35) : allowance("vision", 0, 8),
+        callType === "chat" ? allowance("chat", 20, 20) : allowance("vision", 0, 8),
       ),
     );
     const user = userEvent.setup();
     render(<CoachPage />);
 
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(/used all 35 of today's coach messages/i),
+      expect(screen.getByRole("status")).toHaveTextContent(/used all 20 of today's coach messages/i),
     );
 
     await user.type(screen.getByPlaceholderText(/back tomorrow/i), "One more?");

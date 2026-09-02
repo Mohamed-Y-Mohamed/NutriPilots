@@ -165,7 +165,7 @@ async function stubBackend(page: Page, backend: Backend) {
     if (path.includes("/auth/v1/logout")) return send({});
 
     if (path.includes("/rpc/get_ai_usage")) {
-      return send({ used: 2, daily_limit: 35, resets_at: "2099-01-01T00:00:00Z" });
+      return send({ used: 2, daily_limit: 20, resets_at: "2099-01-01T00:00:00Z" });
     }
     if (path.includes("/rpc/daily_totals")) return send([]);
     if (path.includes("/rpc/recent_foods")) return send(RECENT_FOODS);
@@ -214,7 +214,7 @@ async function stubBackend(page: Page, backend: Backend) {
             usage: {
               callType: "chat",
               used: 3,
-              dailyLimit: 35,
+              dailyLimit: 20,
               resetsAt: "2099-01-01T00:00:00Z",
               retryAfter: 20,
             },
@@ -270,7 +270,7 @@ async function stubBackend(page: Page, backend: Backend) {
         usage: {
           callType: "chat",
           used: 3,
-          dailyLimit: 35,
+          dailyLimit: 20,
           resetsAt: "2099-01-01T00:00:00Z",
         },
       });
