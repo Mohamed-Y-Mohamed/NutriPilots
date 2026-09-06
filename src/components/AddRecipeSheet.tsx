@@ -3,14 +3,14 @@ import {
   Camera,
   Check,
   Database,
+  Images,
   Info,
   PencilLine,
   Plus,
   Sparkles,
-  Wand2,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useState } from "react";
 import { ReasonList } from "./AddIngredientSheet";
 import {
   Alert,
@@ -23,8 +23,7 @@ import {
   labelClass,
   Sheet,
 } from "./ui";
-import { prepareImage } from "../lib/image";
-import { capturePhoto, isNative } from "../lib/native";
+import { usePhotoPicker } from "../lib/usePhotoPicker";
 import { uploadMealPhoto } from "../services/aiClient";
 import { useAuth } from "../state/AuthContext";
 import { macroCalorieMismatch, round1, totalsForLines } from "../lib/nutrition";
@@ -92,7 +91,10 @@ export function AddRecipeSheet({
   const [lines, setLines] = useState<EstimateLine[]>([]);
 
   const { user } = useAuth();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const picker = usePhotoPicker({
+    onPhoto: (photo) => runScan(photo.blob),
+    onError: setError,
+  });
 
   const set = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -104,32 +106,6 @@ export function AddRecipeSheet({
     setGrounded(null);
   };
 
-  const scan = async (source: "camera" | "gallery") => {
-    if (!user) return;
-    if (!isNative && source === "camera") {
-      fileRef.current?.click();
-      return;
-    }
-    try {
-      const captured = await capturePhoto(source);
-      if (captured) await runScan(captured.blob);
-    } catch {
-      // The camera sheet was dismissed, which is not an error.
-    }
-  };
-
-  const scanFromFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const prepared = await prepareImage(file);
-      await runScan(prepared.blob);
-    } catch (reason) {
-      setError(presentError(reason, "Could not read that image."));
-    } finally {
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  };
 
   const runScan = async (blob: Blob) => {
     if (!user || scanning) return;
@@ -350,30 +326,35 @@ export function AddRecipeSheet({
     >
       <div className="grid gap-4">
         <div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="sr-only"
-            onChange={(event) => void scanFromFile(event)}
-          />
+          <input {...picker.fileInputProps} className="sr-only" />
           <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              onClick={() => void scan("camera")}
-              disabled={scanning || busy}
-            >
-              <Camera size={16} />
-              {scanning && !describing ? "Reading recipe…" : "Scan a recipe or dish"}
-            </Button>
-            {isNative && (
+            {picker.canTakePhoto ? (
+              <>
+                <Button
+                  className="flex-1"
+                  onClick={() => void picker.takePhoto()}
+                  disabled={scanning || busy}
+                >
+                  <Camera size={16} />
+                  {scanning && !describing ? "Reading recipe…" : "Scan a recipe or dish"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => void picker.uploadPhoto()}
+                  disabled={scanning || busy}
+                  aria-label="Upload a photo of a recipe or dish"
+                >
+                  <Images size={16} />
+                </Button>
+              </>
+            ) : (
               <Button
-                onClick={() => void scan("gallery")}
+                className="flex-1"
+                onClick={() => void picker.uploadPhoto()}
                 disabled={scanning || busy}
-                aria-label="Choose a photo"
               >
-                <Wand2 size={16} />
+                <Images size={16} />
+                {scanning && !describing ? "Reading recipe…" : "Upload a recipe or dish photo"}
               </Button>
             )}
           </div>

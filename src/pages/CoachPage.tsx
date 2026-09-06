@@ -1,5 +1,5 @@
 import { Bot, Camera, Check, CircleHelp, Images, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Alert,
   Button,
@@ -16,8 +16,7 @@ import { PlanCard } from "../components/PlanCard";
 import { ScrollingText } from "../components/ScrollingText";
 import { formatTimeUntil } from "../lib/dates";
 import { round1, totalsForLines } from "../lib/nutrition";
-import { prepareImage } from "../lib/image";
-import { capturePhoto, isNative } from "../lib/native";
+import { usePhotoPicker } from "../lib/usePhotoPicker";
 import {
   clearChatHistory,
   FunctionError,
@@ -147,9 +146,10 @@ export function CoachPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
 
-  const fileRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const picker = usePhotoPicker({ onPhoto: setPhoto, onError: setError });
 
   useEffect(() => {
     void loadChatHistory()
@@ -171,31 +171,6 @@ export function CoachPage() {
     const element = scrollRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   }, [messages, sending]);
-
-  const attachFromFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setError(null);
-    try {
-      setPhoto(await prepareImage(file));
-    } catch (reason) {
-      setError(presentError(reason, "Could not read that image."));
-    }
-  };
-
-  const attachFromCamera = async (source: "camera" | "gallery") => {
-    if (!isNative) {
-      fileRef.current?.click();
-      return;
-    }
-    setError(null);
-    try {
-      const captured = await capturePhoto(source);
-      if (captured) setPhoto(captured);
-    } catch {
-      // The user dismissed the camera sheet, which is not an error.
-    }
-  };
 
   // What the current send would draw from. A photo and a message come out of
   // different allowances, so being out of one says nothing about the other.
@@ -300,7 +275,6 @@ export function CoachPage() {
       // both the photo and the words, because the next thing the user will do
       // is press send again.
       setPhoto(null);
-      if (fileRef.current) fileRef.current.value = "";
     } catch (reason) {
       const message = presentError(reason, "The coach could not answer that.");
 
@@ -463,32 +437,27 @@ export function CoachPage() {
         ) : null}
 
         <div className="flex items-center gap-1.5 rounded-2xl border border-line bg-surface p-1.5">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(event) => void attachFromFile(event)}
-            className="sr-only"
-          />
-          <button
-            type="button"
-            onClick={() => void attachFromCamera("camera")}
-            aria-label="Take a meal photo"
-            className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand transition-transform active:scale-90"
-          >
-            <Camera size={19} />
-          </button>
-          {isNative && (
+          <input {...picker.fileInputProps} className="sr-only" />
+          {picker.canTakePhoto && (
             <button
               type="button"
-              onClick={() => void attachFromCamera("gallery")}
-              aria-label="Choose a photo"
-              className="grid size-10 shrink-0 place-items-center rounded-xl text-ink-muted transition-transform active:scale-90"
+              onClick={() => void picker.takePhoto()}
+              aria-label="Take a meal photo"
+              className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand transition-transform active:scale-90"
             >
-              <Images size={19} />
+              <Camera size={19} />
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => void picker.uploadPhoto()}
+            aria-label="Upload a meal photo"
+            className={`grid size-10 shrink-0 place-items-center rounded-xl transition-transform active:scale-90 ${
+              picker.canTakePhoto ? "text-ink-muted" : "bg-brand-soft text-brand"
+            }`}
+          >
+            <Images size={19} />
+          </button>
 
           <input
             ref={promptRef}

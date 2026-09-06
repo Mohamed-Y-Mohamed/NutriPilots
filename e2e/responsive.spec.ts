@@ -571,4 +571,27 @@ test.describe("signed-in layout", () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(320);
     expect(box!.x).toBeGreaterThanOrEqual(0);
   });
+
+  /**
+   * The web build uploads a photo and never opens a camera. Only half of that
+   * rule can be tested in a browser, which is exactly why this half is pinned:
+   * a `capture` attribute or a camera button reintroduced by a later change
+   * would send a phone browser straight into its camera app, with no way to
+   * choose a photo already taken.
+   */
+  test("the coach offers an upload and no camera on the web", async ({ page }) => {
+    await signIn(page);
+    await stubSupabase(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.goto("/coach");
+    await expect(page.getByRole("button", { name: "Upload a meal photo" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: "Take a meal photo" })).toHaveCount(0);
+
+    const input = page.locator('input[type="file"]');
+    await expect(input).toHaveAttribute("accept", "image/*");
+    await expect(input).not.toHaveAttribute("capture", /.*/);
+  });
 });

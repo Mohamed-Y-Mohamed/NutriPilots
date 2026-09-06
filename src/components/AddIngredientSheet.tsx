@@ -1,8 +1,7 @@
-import { AlertTriangle, Camera, Check, Info, Sparkles, Wand2 } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { AlertTriangle, Camera, Check, Images, Info, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Chip, Field, inputClass, labelClass, Sheet } from "./ui";
-import { prepareImage } from "../lib/image";
-import { capturePhoto, isNative } from "../lib/native";
+import { usePhotoPicker } from "../lib/usePhotoPicker";
 import { macroCalorieMismatch } from "../lib/nutrition";
 import { uploadMealPhoto } from "../services/aiClient";
 import { findExistingIngredients } from "../services/foodSearch";
@@ -63,7 +62,10 @@ export function AddIngredientSheet({
   const [duplicates, setDuplicates] = useState<Ingredient[]>([]);
   const [duplicatesDismissed, setDuplicatesDismissed] = useState(false);
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  const picker = usePhotoPicker({
+    onPhoto: (photo) => runScan(photo.blob),
+    onError: setError,
+  });
 
   const set = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -100,35 +102,6 @@ export function AddIngredientSheet({
       Number(form.carbohydrates_g),
       Number(form.fat_g),
     ) > 0.25;
-
-  const scan = async (source: "camera" | "gallery") => {
-    if (!user) return;
-
-    if (!isNative && source === "camera") {
-      fileRef.current?.click();
-      return;
-    }
-
-    try {
-      const captured = await capturePhoto(source);
-      if (captured) await runScan(captured.blob);
-    } catch {
-      // The camera sheet was dismissed, which is not an error.
-    }
-  };
-
-  const scanFromFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const prepared = await prepareImage(file);
-      await runScan(prepared.blob);
-    } catch (reason) {
-      setError(presentError(reason, "Could not read that image."));
-    } finally {
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  };
 
   const runScan = async (blob: Blob) => {
     if (!user || scanning) return;
@@ -258,25 +231,33 @@ export function AddIngredientSheet({
     >
       <div className="grid gap-4">
         <div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="sr-only"
-            onChange={(event) => void scanFromFile(event)}
-          />
+          <input {...picker.fileInputProps} className="sr-only" />
           <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              onClick={() => void scan("camera")}
-              disabled={scanning || busy}
-            >
-              <Camera size={16} /> {scanning ? "Reading photo…" : "Scan label or food"}
-            </Button>
-            {isNative && (
-              <Button onClick={() => void scan("gallery")} disabled={scanning || busy}>
-                <Wand2 size={16} />
+            {picker.canTakePhoto ? (
+              <>
+                <Button
+                  className="flex-1"
+                  onClick={() => void picker.takePhoto()}
+                  disabled={scanning || busy}
+                >
+                  <Camera size={16} /> {scanning ? "Reading photo…" : "Scan label or food"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => void picker.uploadPhoto()}
+                  disabled={scanning || busy}
+                  aria-label="Upload a photo of a label or food"
+                >
+                  <Images size={16} />
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="flex-1"
+                onClick={() => void picker.uploadPhoto()}
+                disabled={scanning || busy}
+              >
+                <Images size={16} /> {scanning ? "Reading photo…" : "Upload a label or food"}
               </Button>
             )}
           </div>

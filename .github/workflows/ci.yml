@@ -11,6 +11,13 @@ on:
   pull_request:
     branches: [main]
 
+# Neither job writes anything back — they lint, build and throw the result away.
+# Without this the run inherits whatever the repository default is, which for an
+# older repository is a read/write token handed to every third-party action in
+# the tree.
+permissions:
+  contents: read
+
 # A newer push makes an in-flight run irrelevant.
 concurrency:
   group: ci-${{ github.ref }}
