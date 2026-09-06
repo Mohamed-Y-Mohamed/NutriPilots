@@ -18,8 +18,8 @@ android {
         applicationId "com.nutripilots.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.5"
+        versionCode 6
+        versionName "1.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -39,12 +39,31 @@ android {
     }
     buildTypes {
         release {
-            // Left off deliberately. Capacitor discovers plugins by reflection,
-            // so R8 can strip a plugin that only fails once the app is running
-            // on a device. Turning it on is a post-launch change to make with a
-            // device test behind it, not a release-day one.
-            minifyEnabled false
+            // On since 1.6. Capacitor discovers plugins by reflection, which is
+            // why this was held back — but capacitor-android ships consumer
+            // ProGuard rules that keep every Plugin subclass and @PluginMethod,
+            // and this module's only Java is an empty MainActivity. The rules
+            // in proguard-rules.pro cover the rest. Play asks for it: an
+            // obfuscated build uploads a mapping file so crashes stay readable,
+            // and the shrink takes weight out of the APK.
+            //
+            // Resource shrinking stays off: the splash screen plugin resolves
+            // drawables by name at runtime, which the shrinker cannot see.
+            minifyEnabled true
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Play asks for native debug symbols so an NDK crash reads as a
+            // stack trace rather than an address. The only native code here is
+            // CameraX's two .so files, and Google ships those already stripped:
+            //   "Unable to extract native debug metadata ... because the native
+            //    debug metadata has already been stripped"
+            // so the bundle carries none and that Play warning cannot be
+            // cleared from this side. This stays on regardless — it costs
+            // nothing, and any future dependency that ships unstripped
+            // libraries gets its symbols packaged without anyone remembering.
+            ndk {
+                debugSymbolLevel 'FULL'
+            }
             if (hasSigningConfig) {
                 signingConfig signingConfigs.release
             }

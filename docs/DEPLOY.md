@@ -88,8 +88,8 @@ Bump the version in `android/app/build.gradle` before building. Play rejects a
 `versionCode` it has already seen:
 
 ```gradle
-versionCode 5
-versionName "1.5"
+versionCode 6
+versionName "1.6"
 ```
 
 Then:
@@ -102,6 +102,32 @@ That runs the web build, copies it into the Android project, and produces
 `android/app/build/outputs/bundle/release/app-release.aab`. Upload that to Play
 Console. `npm run android:build` produces an APK instead — useful for sideloading
 a test build, not for Play.
+
+### Obfuscation and crash reports
+
+The release build runs R8 (`minifyEnabled true`), which is why Play stopped
+asking for a deobfuscation file: Gradle writes the mapping into the bundle
+itself, at `BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`.
+There is nothing to upload by hand, and nothing to remember. Confirm it is there
+before uploading if you want certainty:
+
+```bash
+unzip -l android/app/build/outputs/bundle/release/app-release.aab | grep proguard.map
+```
+
+R8 renames classes, and Capacitor finds its plugins by reflection, so the two
+have to be kept apart deliberately — `android/app/proguard-rules.pro` plus the
+consumer rules inside capacitor-android do that. **Because that risk is a
+runtime one, a release build gets an internal-track install before a staged
+rollout**: open the camera, take a photo, save a food, check the splash screen
+and status bar. Those are the paths reflection touches. Unit and e2e tests run
+against the web layer and cannot catch a stripped plugin.
+
+Play's other warning, about native debug symbols, cannot be cleared. The only
+native code in the app is CameraX's two `.so` files and Google ships them
+already stripped, so there are no symbols to package. `debugSymbolLevel 'FULL'`
+is set anyway, which costs nothing and covers any future dependency that ships
+its own.
 
 **Roll out in stages** (20% → 50% → 100%). Play has no instant rollback: once
 users have installed a build, the only fix is a *higher* versionCode with the

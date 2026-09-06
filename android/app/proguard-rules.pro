@@ -1,21 +1,48 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
+# R8 rules for the release build (minifyEnabled true since 1.6).
 #
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Most of the work is done for us: capacitor-android ships consumer rules that
+# keep every Plugin subclass and @PluginMethod, and AndroidX/CameraX ship their
+# own. What follows is the part R8 cannot infer from this app.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# --- Readable crash reports -------------------------------------------------
+# Without these, the mapping file uploaded to Play can rename classes back but
+# has no line numbers to map, so a deobfuscated stack trace stops at the method.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# --- Capacitor bridge -------------------------------------------------------
+# The bridge reads @CapacitorPlugin, @PermissionCallback and @ActivityCallback
+# at runtime to build its plugin registry, so the annotations must survive the
+# shrink even though no code references them.
+-keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# The bridge instantiates its own internals reflectively (plugin handles, config,
+# the JS injector), none of it on a path R8 can trace from the manifest.
+-keep class com.getcapacitor.** { *; }
+-keep interface com.getcapacitor.** { *; }
+
+# Belt and braces over the consumer rules: any plugin, ours or a dependency's.
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keep public class * extends com.getcapacitor.Plugin { *; }
+
+# The Cordova compatibility shim is loaded by name, not by reference.
+-keep class org.apache.cordova.** { *; }
+
+# --- WebView bridge ---------------------------------------------------------
+# Anything callable from JavaScript is only ever reached from JavaScript, which
+# R8 cannot see.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# --- JNI --------------------------------------------------------------------
+# CameraX's native libraries bind to these by name; renaming them breaks the
+# link at runtime rather than at build time.
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# --- Noise ------------------------------------------------------------------
+# Build-time-only annotations referenced by libraries but never packaged.
+-dontwarn javax.annotation.**
+-dontwarn org.codehaus.mojo.animal_sniffer.**
